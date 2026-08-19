@@ -526,6 +526,8 @@ def add_decor(img, theme, rng, zones=None, density=1.0, big_ok=True):
 
 
 CURRENT_THEME = {}
+# 편집기용 레이어 캡처: {"bg": PIL, "stickers": [(PIL, x, y)], "texts": [dict]} (None이면 비활성)
+CAPTURE = None
 
 def prep_sticker(im, target_h, outline=True, outline_ratio=0.042, max_w=None, max_upscale=1.55,
                  rot=None):
@@ -1098,8 +1100,12 @@ def compose(img, theme, stickers, rng, plan, decor_zone=None, decor_n=None, allo
         cy = big.y + big.im.height / 2
         col = (255, 255, 255) if not theme["is_dark"] else hls(theme["hue"], 0.5, 0.6)
         draw_halo(img, cx, cy, big.im.width * 0.75, big.im.height * 0.7, col, alpha=120)
-    boxes = draw_plan(img, plan)
+    boxes = [p.box for p in plan]
     add_decor_sparse(img, theme, rng, boxes, n=decor_n, zone=decor_zone)
+    if CAPTURE is not None:
+        CAPTURE["bg"] = img.copy()
+        CAPTURE["stickers"] = [(p.im, p.x, p.y) for p in plan]
+    draw_plan(img, plan)
     return img
 
 
@@ -1246,6 +1252,8 @@ def render_som_mo(w, h, theme, data, stickers, rng):
     od.rectangle([0, 0, 10, h], fill=(*edge_col, 255))
     od.rectangle([w - 10, 0, w, h], fill=(*edge_col, 255))
     img.alpha_composite(overlay)
+    if CAPTURE is not None and CAPTURE.get("bg") is not None:
+        CAPTURE["bg"].alpha_composite(overlay)
     return img
 
 
@@ -1281,8 +1289,8 @@ def draw_outlined_text(img, xy, text, font, fill, outline, stroke, anchor="la"):
     d.text(xy, text, font=font, fill=fill, stroke_width=stroke, stroke_fill=outline, anchor=anchor)
 
 
-def wrap_title(d, text, font, max_w):
-    """공백 기준으로 최대 2줄 줄바꿈 (공백 없으면 글자 단위)"""
+def wrap_title(d, text, font, max_w, allow_char=True):
+    """공백 기준으로 최대 2줄 줄바꿈 (allow_char=True 이고 공백 분할이 안 되면 글자 단위)"""
     if d.textlength(text, font=font) <= max_w:
         return [text]
     words = text.split()
@@ -1297,6 +1305,8 @@ def wrap_title(d, text, font, max_w):
                     best = (score, [a, b])
         if best:
             return best[1]
+    if not allow_char:
+        return None
     # 글자 단위
     mid = len(text) // 2
     for k in range(0, mid):
@@ -1329,20 +1339,33 @@ def render_sns_promo(w, h, theme, data, stickers, rng):
         draw_star(od, rng.uniform(0, w), rng.uniform(h - bot_h, h), r, (255, 255, 255, 200), rot=rng.uniform(0, 6.28))
     img.alpha_composite(ov)
 
+    if CAPTURE is not None:
+        CAPTURE["bg"] = img.copy()
+        CAPTURE["stickers"] = []
+        CAPTURE["texts"] = []
     # 제목 (둥근 고딕, 검정 + 두꺼운 흰 테두리), 2줄 허용
     font_path = bundled("Jua-Regular.ttf") or FONT_BOLD
     title = data["title"] or "NEW STICKER"
     tsize = int(top_h * 0.34)
     tf = load_font(font_path, tsize)
     max_tw = w * 0.50
-    lines = wrap_title(d, title, tf, max_tw)
-    while (max(d.textlength(l, font=tf) for l in lines) > max_tw or len(lines) * tsize * 1.15 > top_h * 0.85) and tsize > 36:
-        tsize -= 4; tf = load_font(font_path, tsize); lines = wrap_title(d, title, tf, max_tw)
+    def _fit(lines_, tf_, ts_):
+        return lines_ is not None and max(d.textlength(l, font=tf_) for l in lines_) <= max_tw and len(lines_) * ts_ * 1.15 <= top_h * 0.85
+    lines = wrap_title(d, title, tf, max_tw, allow_char=False)
+    while not _fit(lines, tf, tsize) and tsize > int(top_h * 0.2):
+        tsize -= 4; tf = load_font(font_path, tsize); lines = wrap_title(d, title, tf, max_tw, allow_char=False)
+    if not _fit(lines, tf, tsize):  # 단어 단위로 안 되면 글자 단위 허용
+        lines = wrap_title(d, title, tf, max_tw, allow_char=True)
+        while not _fit(lines, tf, tsize) and tsize > 36:
+            tsize -= 4; tf = load_font(font_path, tsize); lines = wrap_title(d, title, tf, max_tw, allow_char=True)
     stroke = max(5, tsize // 8)
     total_th = len(lines) * tsize * 1.15
     y = (top_h - total_th) / 2 + tsize * 0.02
     for ln in lines:
         draw_outlined_text(img, (w / 2, y), ln, tf, (30, 30, 34), (255, 255, 255), stroke, anchor="ma")
+        if CAPTURE is not None:
+            CAPTURE["texts"].append({"text": ln, "x": w / 2, "y": y, "size": tsize, "stroke": stroke,
+                                     "font": os.path.basename(font_path or ""), "anchor": "top"})
         y += tsize * 1.15
 
     # 양옆 캐릭터 (가장자리에 살짝 걸쳐도 OK)
@@ -1360,6 +1383,8 @@ def render_sns_promo(w, h, theme, data, stickers, rng):
         yy = top_h - st.height + st.height * rng.uniform(0.02, 0.10)
         yy = max(top_h * 0.05, yy)
         img.alpha_composite(st, (int(x), int(yy)))
+        if CAPTURE is not None:
+            CAPTURE["stickers"].append((st, int(x), int(yy)))
     # 상단 블록 하단 경계 정리 (캐릭터가 블록 아래로 넘친 부분은 그대로 두고 흰 영역과 자연스럽게)
 
     # 하단 문구
@@ -1371,6 +1396,9 @@ def render_sns_promo(w, h, theme, data, stickers, rng):
         bsize -= 3; bf = load_font(font_path, bsize)
     draw_outlined_text(img, (w / 2, h - bot_h / 2), bottom_txt, bf, (30, 30, 34), (255, 255, 255),
                        max(4, bsize // 8), anchor="mm")
+    if CAPTURE is not None:
+        CAPTURE["texts"].append({"text": bottom_txt, "x": w / 2, "y": h - bot_h / 2, "size": bsize,
+                                 "stroke": max(4, bsize // 8), "font": os.path.basename(font_path or ""), "anchor": "middle"})
 
     # 스티커 그리드 (흰 배경, 테두리 없음)
     cols = 4
@@ -1394,6 +1422,8 @@ def render_sns_promo(w, h, theme, data, stickers, rng):
         x = side + row_offset + c * cell_w + (cell_w - st.width) / 2
         yy = grid_top + r * cell_h + (cell_h - st.height) / 2
         img.alpha_composite(st, (int(x), int(yy)))
+        if CAPTURE is not None:
+            CAPTURE["stickers"].append((st, int(x), int(yy)))
     return img
 
 
@@ -1417,8 +1447,10 @@ def ensure_not_white(img):
     return img
 
 
-def generate_all(data, imgs, out_dir, seed):
-    global CURRENT_THEME
+LAYERS = {}  # name -> capture dict (generate_all(capture=True) 시 채워짐)
+
+def generate_all(data, imgs, out_dir, seed, capture=False):
+    global CURRENT_THEME, CAPTURE, LAYERS
     rng = random.Random(seed)
     theme = make_theme(imgs, rng)
     CURRENT_THEME = theme
@@ -1426,9 +1458,17 @@ def generate_all(data, imgs, out_dir, seed):
     print(f"  테마: {theme['mode']}/{theme['strategy']} · 배경={theme['bg_style']} · "
           f"효과={theme['bg_fx']} · 장식={'+'.join(theme['decor'])} · 기울임={'O' if theme['tilt'] else 'X'} (seed={seed})")
     results = []
+    LAYERS = {}
     for name, w, h, kind, _has_text in SPECS:
         sub_rng = random.Random(rng.random())
+        CAPTURE = {"bg": None, "stickers": [], "texts": []} if capture else None
         img = RENDERERS[kind](w, h, theme, data, imgs, sub_rng)
+        if capture:
+            if CAPTURE.get("bg") is None:
+                CAPTURE["bg"] = img.copy()
+            CAPTURE["size"] = (w, h)
+            LAYERS[name] = CAPTURE
+        CAPTURE = None
         img = img.convert("RGB")
         path = os.path.join(out_dir, f"{name}.png")
         img.save(path, "PNG")

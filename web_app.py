@@ -17,6 +17,8 @@ from PIL import Image
 
 sys.argv = ["web"]  # banner_gen 의 argparse 영향 방지
 import banner_gen as bg  # noqa: E402
+import editor  # noqa: E402
+import streamlit.components.v1 as components  # noqa: E402
 
 st.set_page_config(page_title="OGQ 배너 생성기", page_icon="🎨", layout="wide")
 
@@ -87,38 +89,70 @@ if go:
             st.error(f"소스를 읽지 못했습니다: {e}")
             st.stop()
 
-    st.success(f"**{data['title']}**  ·  스티커 {len(imgs)}개" + (f"  ·  작가 {data['creator']}" if data.get("creator") else ""))
-
     safe_title = re.sub(r'[\\/:*?"<>|]', "_", data["title"])[:40] or "banner"
     workdir = tempfile.mkdtemp(prefix="ogq_out_")
-    all_files = []
-    tabs = st.tabs([f"시안 {i + 1}" for i in range(variants)])
-    for v, tab in enumerate(tabs):
+    results = []  # [(variant_idx, name, path, layers)]
+    import contextlib
+    prog = st.progress(0, text="배너 생성 중...")
+    for v in range(variants):
         seed = random.randrange(1 << 30)
         out_dir = os.path.join(workdir, safe_title if variants == 1 else f"{safe_title}/시안_{v + 1}")
-        with tab:
-            with st.spinner(f"시안 {v + 1} 생성 중... (30초~1분)"):
-                # print 출력 억제
-                import contextlib
-                with contextlib.redirect_stdout(io.StringIO()):
-                    paths = bg.generate_all(data, imgs, out_dir, seed)
-            all_files += paths
-            # 미리보기
-            cols = st.columns(2)
-            for i, p in enumerate(paths):
-                with cols[i % 2]:
-                    im = Image.open(p)
-                    st.image(im, caption=f"{os.path.basename(p)}  ({im.width}x{im.height})", use_container_width=True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            paths = bg.generate_all(data, imgs, out_dir, seed, capture=True)
+        layers = dict(bg.LAYERS)
+        for p in paths:
+            name = os.path.splitext(os.path.basename(p))[0]
+            results.append((v, name, p, layers.get(name)))
+        prog.progress((v + 1) / variants, text=f"시안 {v + 1}/{variants} 완료")
+    prog.empty()
+    st.session_state["gen"] = {"data": data, "imgs": imgs, "results": results, "workdir": workdir,
+                               "safe_title": safe_title, "variants": variants}
+    st.session_state.pop("edit_target", None)
 
-    # zip 으로 묶어 다운로드
+gen = st.session_state.get("gen")
+if gen:
+    data, imgs, results = gen["data"], gen["imgs"], gen["results"]
+    safe_title, variants, workdir = gen["safe_title"], gen["variants"], gen["workdir"]
+    st.success(f"**{data['title']}**  ·  스티커 {len(imgs)}개" + (f"  ·  작가 {data['creator']}" if data.get("creator") else ""))
+
+    # 전체 다운로드
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for p in all_files:
-            arc = os.path.relpath(p, workdir)
-            z.write(p, arc)
+        for _, _, p, _ in results:
+            if os.path.exists(p):
+                z.write(p, os.path.relpath(p, workdir))
     buf.seek(0)
-    st.download_button("⬇️  배너 전체 다운로드 (zip)", data=buf,
-                       file_name=f"{safe_title}_배너.zip", mime="application/zip",
-                       type="primary")
-    st.caption("마음에 안 들면 「배너 만들기」를 다시 누르세요 — 매번 새 디자인이 나옵니다.")
-    shutil.rmtree(workdir, ignore_errors=True)
+    st.download_button("⬇️  배너 전체 다운로드 (zip)", data=buf, file_name=f"{safe_title}_배너.zip",
+                       mime="application/zip", type="primary")
+    st.caption("마음에 안 들면 「배너 만들기」를 다시 누르세요 — 매번 새 디자인이 나옵니다. 개별 배너는 아래에서 ✏️ 편집할 수 있어요.")
+
+    # 편집기
+    st.divider()
+    st.subheader("✏️ 배너 편집")
+    options = [f"{'시안 ' + str(v + 1) + ' · ' if variants > 1 else ''}{name}" for v, name, _, _ in results]
+    pick = st.selectbox("편집할 배너를 고르세요", options, index=None, placeholder="배너 선택…", key="edit_target")
+    if pick:
+        idx = options.index(pick)
+        _, name, p, layers = results[idx]
+        if layers:
+            html = editor.build_editor_html(layers, imgs, bg.BUNDLED_FONT_DIR, name)
+            w, h = layers["size"]
+            zoom = min(1, min(1000, 1100) / w)
+            components.html(html, height=int(h * zoom) + 190, scrolling=True)
+        else:
+            st.info("이 배너는 편집 레이어가 없습니다.")
+
+    # 미리보기
+    st.divider()
+    tabs = st.tabs([f"시안 {i + 1}" for i in range(variants)])
+    for v, tab in enumerate(tabs):
+        with tab:
+            cols = st.columns(2)
+            k = 0
+            for vv, name, p, _ in results:
+                if vv != v or not os.path.exists(p):
+                    continue
+                with cols[k % 2]:
+                    im = Image.open(p)
+                    st.image(im, caption=f"{name}  ({im.width}x{im.height})", use_container_width=True)
+                k += 1
