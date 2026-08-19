@@ -53,7 +53,8 @@ def _load(url, upload):
     """소스에서 (data, imgs, title) 로드"""
     if upload is not None:
         tmpdir = tempfile.mkdtemp(prefix="ogq_web_")
-        path = os.path.join(tmpdir, upload.name)
+        import unicodedata
+        path = os.path.join(tmpdir, unicodedata.normalize("NFC", upload.name))
         with open(path, "wb") as f:
             f.write(upload.getbuffer())
         data, imgs = bg.load_local_source(path)

@@ -39,6 +39,7 @@ import re
 import shutil
 import sys
 import time
+import unicodedata
 import urllib.parse
 
 try:
@@ -137,7 +138,7 @@ def fetch_artwork(artwork_id: str) -> dict:
     main = re.sub(r"\?type=.*$", "?type=o480_480", art.get("mainImageUrl", ""))
     return {
         "id": artwork_id,
-        "title": art.get("defaultName", "").strip(),
+        "title": unicodedata.normalize("NFC", art.get("defaultName", "").strip()),
         "description": art.get("defaultDescription", "").strip(),
         "creator": creator.get("nickname", "").strip(),
         "main_image": main,
@@ -172,7 +173,7 @@ def load_local_source(path):
     import zipfile, tempfile
     exts = (".png", ".gif", ".webp", ".jpg", ".jpeg")
     files = []
-    title = os.path.splitext(os.path.basename(path.rstrip("/")))[0]
+    title = unicodedata.normalize("NFC", os.path.splitext(os.path.basename(path.rstrip("/")))[0])
     if os.path.isfile(path) and zipfile.is_zipfile(path):
         tmp = tempfile.mkdtemp(prefix="ogq_src_")
         with zipfile.ZipFile(path) as z:
