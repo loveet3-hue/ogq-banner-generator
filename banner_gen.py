@@ -272,10 +272,10 @@ def make_theme(imgs, rng):
     else:
         h = rng.random()
 
-    mode = rng.choice(["pastel", "pastel", "pastel", "duo", "cream", "cream", "mint", "sky", "peach", "lavender"])
+    mode = rng.choice(["pastel", "pastel", "pastel", "pastel", "duo", "cream", "mint", "sky", "peach", "lavender"])
     if mode == "pastel":
-        bg1 = hls(h, rng.uniform(0.80, 0.88), rng.uniform(0.6, 0.85))
-        bg2 = hls((h + rng.uniform(0.03, 0.08)) % 1, rng.uniform(0.74, 0.84), rng.uniform(0.55, 0.8))
+        bg1 = hls(h, rng.uniform(0.80, 0.87), rng.uniform(0.7, 0.95))
+        bg2 = hls((h + rng.uniform(0.01, 0.04)) % 1, rng.uniform(0.78, 0.86), rng.uniform(0.65, 0.9))
     elif mode == "peach":
         bg1 = hls(rng.uniform(0.04, 0.09), rng.uniform(0.88, 0.93), rng.uniform(0.6, 0.85))
         bg2 = hls(rng.uniform(0.06, 0.11), rng.uniform(0.84, 0.90), rng.uniform(0.55, 0.8))
@@ -319,24 +319,24 @@ def make_theme(imgs, rng):
     rng.shuffle(accents)
     text_dark = hls(h, 0.16, 0.45)
     # 배경 스타일: 그라데이션 or 패턴
-    bg_style = rng.choice(["clouds", "clouds", "checker_frame", "checker_top", "halftone", "big_circle",
-                           "burst_soft", "candy_stripes", "gingham", "polka", "confetti", "rainbow_arc",
-                           "blobs", "grad"])
-    decor_pool = ["star", "star", "sparkle", "sparkle", "heart", "heart", "circle", "ring", "flower", "music"]
+    bg_style = rng.choice(["flat_lines", "flat_lines", "scallop", "scallop", "stars_big", "clouds",
+                           "checker_top", "polka", "gingham", "big_circle", "candy_stripes",
+                           "rainbow_arc", "confetti", "grad"])
+    decor_pool = ["star", "star", "sparkle", "heart", "heart", "music", "flower", "circle"]
     bg_fx = rng.choice(["none", "none", "halo"])
     # 포인트 색상 계열: 보색 / 삼각배색 (배경과 확실히 구분되도록)
     accent_hues = [(h + 0.5) % 1, (h + 0.33) % 1, (h - 0.33) % 1]
     rng.shuffle(accent_hues)
-    decor_cols = [hls(accent_hues[0], 0.72, 0.85), hls(accent_hues[1], 0.72, 0.85), (255, 255, 255)]
+    decor_cols = [hls(h, 0.66, 0.8), hls(accent_hues[0], 0.78, 0.85), hls(accent_hues[1], 0.78, 0.85), (255, 255, 255)]
     rng.shuffle(decor_cols)
-    decor_cols = decor_cols[:rng.choice([1, 2, 2, 3])]
+    decor_cols = decor_cols[:rng.choice([2, 2, 3])]
     return {
         "hue": h, "mode": mode, "strategy": strategy, "bg1": bg1, "bg2": bg2,
         "decor_cols": decor_cols, "accent_hues": accent_hues,
         "accents": accents, "text": text_dark, "is_dark": is_dark,
         "grad_dir": rng.choice(["v", "h", "d", "radial"]),
         "bg_style": bg_style, "bg_fx": bg_fx,
-        "decor": rng.sample(decor_pool, k=rng.choice([1, 2, 2])),
+        "decor": rng.sample(decor_pool, k=rng.choice([2, 3])),
         "outline_color": (255, 255, 255),
         "tilt": rng.choice([0, 0, 0, 1]),  # 스티커 살짝 기울이기
     }
@@ -527,7 +527,7 @@ def add_decor(img, theme, rng, zones=None, density=1.0, big_ok=True):
 
 CURRENT_THEME = {}
 
-def prep_sticker(im, target_h, outline=True, outline_ratio=0.035, max_w=None, max_upscale=1.55,
+def prep_sticker(im, target_h, outline=True, outline_ratio=0.042, max_w=None, max_upscale=1.55,
                  rot=None):
     """스티커 트리밍 + 아웃라인 + 박스핏 리사이즈 + (선택) 회전"""
     bbox = im.getbbox()
@@ -810,6 +810,35 @@ def render_base(w, h, theme, rng=None):
             d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(*col, 190), width=int(band * 0.85))
         bg.alpha_composite(ov)
 
+    elif style == "flat_lines":  # 단색 + 아주 얇은 가로 줄무늬 (레퍼런스 스타일)
+        ov = Image.new("RGBA", (w, h), (0, 0, 0, 0)); d = ImageDraw.Draw(ov)
+        step = max(6, int(unit * 0.03))
+        for y in range(0, h, step):
+            d.line([(0, y), (w, y)], fill=(*white, 60), width=max(1, step // 3))
+        bg.alpha_composite(ov)
+
+    elif style == "scallop":  # 상단 스캘럽(반원) 띠 + 얇은 줄무늬
+        ov = Image.new("RGBA", (w, h), (0, 0, 0, 0)); d = ImageDraw.Draw(ov)
+        step = max(6, int(unit * 0.03))
+        for y in range(0, h, step):
+            d.line([(0, y), (w, y)], fill=(*white, 45), width=max(1, step // 3))
+        band = unit * rng.uniform(0.05, 0.08)
+        r = band * 0.75
+        d.rectangle([0, 0, w, band], fill=(*deeper, 255))
+        x = 0
+        while x < w + r:
+            d.ellipse([x - r, band - r, x + r, band + r], fill=(*deeper, 255))
+            x += r * 2
+        bg.alpha_composite(ov)
+
+    elif style == "stars_big":  # 큰 흰 별 (레퍼런스 노란 배경 스타일)
+        ov = Image.new("RGBA", (w, h), (0, 0, 0, 0)); d = ImageDraw.Draw(ov)
+        for _ in range(rng.randint(8, 14)):
+            r = unit * rng.uniform(0.03, 0.09)
+            draw_star(d, rng.uniform(0, w), rng.uniform(0, h), r, (*white, rng.randint(120, 210)),
+                      rot=rng.uniform(0, 6.28))
+        bg.alpha_composite(ov)
+
     elif style == "blobs":
         for _ in range(rng.randint(2, 3)):
             hh = (theme["hue"] + rng.uniform(-0.10, 0.10)) % 1.0
@@ -875,30 +904,33 @@ def _decor_sprite(kind, r, color, rot, rng, outline=True):
 
 
 def add_decor_sparse(img, theme, rng, occupied, n=None, zone=None):
-    """빈 공간에만 장식 — 스티커풍(흰 테두리) 도형, 크고 또렷하게, 개수 적게"""
+    """빈 공간에 작고 연한 파스텔 장식(하트·별·음표·꽃·반짝이) — 테두리 없이 은은하게"""
     w, h = img.size
     unit = min(w, h)
     kinds = theme["decor"]
     if not kinds:
         return
-    n = n if n is not None else rng.randint(3, 6)
+    n = n if n is not None else rng.randint(6, 10)
     x0, y0, x1, y1 = zone or (w * 0.03, h * 0.05, w * 0.97, h * 0.95)
     placed = []
     tries = 0
-    while len(placed) < n and tries < 250:
+    while len(placed) < n and tries < 300:
         tries += 1
-        r = unit * rng.uniform(0.045, 0.085)
+        r = unit * rng.uniform(0.025, 0.05)
         cx, cy = rng.uniform(x0 + r, x1 - r), rng.uniform(y0 + r, y1 - r)
-        box = (cx - r * 1.3, cy - r * 1.3, cx + r * 1.3, cy + r * 1.3)
-        if any(_boxes_overlap(box, o, pad=r * 0.5) for o in occupied):
+        box = (cx - r * 1.2, cy - r * 1.2, cx + r * 1.2, cy + r * 1.2)
+        if any(_boxes_overlap(box, o, pad=r * 0.6) for o in occupied):
             continue
-        if any(_boxes_overlap(box, p, pad=r * 1.2) for p in placed):
+        if any(_boxes_overlap(box, p, pad=r * 1.5) for p in placed):
             continue
         placed.append(box)
         kind = rng.choice(kinds)
         color = rng.choice(theme["decor_cols"])
-        sp = _decor_sprite(kind, r, color, rng.uniform(0, math.pi * 2), rng, outline=True)
-        sp = sp.rotate(rng.uniform(-20, 20), expand=True, resample=Image.BICUBIC)
+        sp = _decor_sprite(kind, r, color, rng.uniform(0, math.pi * 2), rng, outline=False)
+        sp = sp.rotate(rng.uniform(-25, 25), expand=True, resample=Image.BICUBIC)
+        # 살짝 투명하게
+        a = sp.split()[3].point(lambda v: int(v * 0.85))
+        sp.putalpha(a)
         img.alpha_composite(sp, (int(cx - sp.width / 2), int(cy - sp.height / 2)))
 
 
@@ -1094,9 +1126,9 @@ def free_compose(img, theme, stickers, rng, x_lo=0.0, x_hi=1.0, top=0.0, styles=
 
 
 def render_nom_main(w, h, theme, data, stickers, rng):
-    """NOM 상단배너 (824x464 / 640x360)"""
+    """NOM 상단배너 (824x464 / 640x360) — 좌하단은 어드민 제목 텍스트 자리라 장식 비움"""
     img = render_base(w, h, theme, rng)
-    free_compose(img, theme, stickers, rng)
+    free_compose(img, theme, stickers, rng, decor_zone=(w * 0.03, h * 0.05, w * 0.97, h * 0.70))
     return img
 
 
@@ -1276,67 +1308,89 @@ def wrap_title(d, text, font, max_w):
 
 
 def render_sns_promo(w, h, theme, data, stickers, rng):
-    """SNS 출시 홍보 이미지 (세로 1080x1350): 제목 + 스티커 그리드 + 출시 문구"""
-    # 배경: 파스텔 단색(살짝 그라데이션)
-    img = render_base(w, h, theme, rng)
+    """SNS 출시 홍보: 상단 단색 블록(제목+별+양옆 캐릭터) / 흰 배경 스티커 그리드 / 하단 출시 문구 띠"""
+    # 단색(살짝 진한 파스텔) 블록 색
+    block = hls(theme["hue"], rng.uniform(0.72, 0.80), rng.uniform(0.75, 0.95))
+    block_dark = hls(theme["hue"], 0.62, 0.85)
+    img = Image.new("RGBA", (w, h), (255, 255, 255, 255))
     d = ImageDraw.Draw(img)
-    dark = theme["is_dark"]
-    text_col = (40, 36, 44) if not dark else (255, 255, 255)
-    stroke_col = (255, 255, 255) if not dark else (30, 30, 40)
+    top_h = int(h * rng.uniform(0.26, 0.30))
+    bot_h = int(h * 0.12)
+    d.rectangle([0, 0, w, top_h], fill=(*block, 255))
+    d.rectangle([0, h - bot_h, w, h], fill=(*block, 255))
+    # 상단 블록: 큰 흰 별 (반투명, 크기 다양)
+    ov = Image.new("RGBA", (w, h), (0, 0, 0, 0)); od = ImageDraw.Draw(ov)
+    for _ in range(rng.randint(10, 16)):
+        r = w * rng.uniform(0.02, 0.06)
+        cx, cy = rng.uniform(0, w), rng.uniform(0, top_h)
+        draw_star(od, cx, cy, r, (255, 255, 255, rng.randint(150, 230)), rot=rng.uniform(0, 6.28))
+    for _ in range(rng.randint(4, 7)):  # 하단 띠에도 작은 별
+        r = w * rng.uniform(0.012, 0.03)
+        draw_star(od, rng.uniform(0, w), rng.uniform(h - bot_h, h), r, (255, 255, 255, 200), rot=rng.uniform(0, 6.28))
+    img.alpha_composite(ov)
 
-    # --- 제목 ---
-    font_path = rng.choice(FONT_HAND_ALT) if FONT_HAND_ALT else FONT_BOLD
+    # 제목 (둥근 고딕, 검정 + 두꺼운 흰 테두리), 2줄 허용
+    font_path = bundled("Jua-Regular.ttf") or FONT_BOLD
     title = data["title"] or "NEW STICKER"
-    tsize = int(h * 0.075)
+    tsize = int(top_h * 0.34)
     tf = load_font(font_path, tsize)
-    lines = wrap_title(d, title, tf, w * 0.86)
-    while len(lines) > 1 and max(d.textlength(l, font=tf) for l in lines) > w * 0.86 and tsize > 40:
-        tsize -= 4; tf = load_font(font_path, tsize); lines = wrap_title(d, title, tf, w * 0.86)
-    while len(lines) == 1 and d.textlength(lines[0], font=tf) > w * 0.86 and tsize > 40:
-        tsize -= 4; tf = load_font(font_path, tsize); lines = wrap_title(d, title, tf, w * 0.86)
-    stroke = max(4, tsize // 9)
-    y = h * 0.06
-    line_gap = tsize * 1.25
+    max_tw = w * 0.50
+    lines = wrap_title(d, title, tf, max_tw)
+    while (max(d.textlength(l, font=tf) for l in lines) > max_tw or len(lines) * tsize * 1.15 > top_h * 0.85) and tsize > 36:
+        tsize -= 4; tf = load_font(font_path, tsize); lines = wrap_title(d, title, tf, max_tw)
+    stroke = max(5, tsize // 8)
+    total_th = len(lines) * tsize * 1.15
+    y = (top_h - total_th) / 2 + tsize * 0.02
     for ln in lines:
-        draw_outlined_text(img, (w / 2, y), ln, tf, text_col, stroke_col, stroke, anchor="ma")
-        y += line_gap
-    title_bottom = y + tsize * 0.2
+        draw_outlined_text(img, (w / 2, y), ln, tf, (30, 30, 34), (255, 255, 255), stroke, anchor="ma")
+        y += tsize * 1.15
 
-    # --- 하단 출시 문구 ---
-    date = RELEASE_DATE
-    bottom_txt = f"{date} 출시!" if date else rng.choice(["NEW 출시!", "출시!", "지금 만나보세요!"])
-    bsize = int(h * 0.085)
-    bf = load_font(font_path, bsize)
-    while d.textlength(bottom_txt, font=bf) > w * 0.86 and bsize > 40:
-        bsize -= 4; bf = load_font(font_path, bsize)
-    bstroke = max(4, bsize // 9)
-    by = h - h * 0.05 - bsize
-    draw_outlined_text(img, (w / 2, by), bottom_txt, bf, text_col, stroke_col, bstroke, anchor="ma")
-    grid_bottom = by - h * 0.03
-
-    # --- 스티커 그리드 ---
+    # 양옆 캐릭터 (가장자리에 살짝 걸쳐도 OK)
     pool = clean_pool(stickers)
+    sides = pick_stickers(pool, rng, 2, prefer_square=True)
+    text_left = w / 2 - max_tw / 2
+    text_right = w / 2 + max_tw / 2
+    for i, s in enumerate(sides):
+        st = prep_sticker(s, top_h * rng.uniform(0.72, 0.88), outline=True, outline_ratio=0.035,
+                          max_w=(text_left - w * 0.02) * 1.15, max_upscale=2.2)
+        if i == 0:
+            x = max(-st.width * 0.08, text_left - st.width - w * 0.015)
+        else:
+            x = min(w - st.width * 0.92, text_right + w * 0.015)
+        yy = top_h - st.height + st.height * rng.uniform(0.02, 0.10)
+        yy = max(top_h * 0.05, yy)
+        img.alpha_composite(st, (int(x), int(yy)))
+    # 상단 블록 하단 경계 정리 (캐릭터가 블록 아래로 넘친 부분은 그대로 두고 흰 영역과 자연스럽게)
+
+    # 하단 문구
+    date = RELEASE_DATE
+    bottom_txt = f"{date} 출시!" if date else rng.choice(["NEW 출시!", "지금 만나보세요!"])
+    bsize = int(bot_h * 0.55)
+    bf = load_font(font_path, bsize)
+    while d.textlength(bottom_txt, font=bf) > w * 0.8 and bsize > 30:
+        bsize -= 3; bf = load_font(font_path, bsize)
+    draw_outlined_text(img, (w / 2, h - bot_h / 2), bottom_txt, bf, (30, 30, 34), (255, 255, 255),
+                       max(4, bsize // 8), anchor="mm")
+
+    # 스티커 그리드 (흰 배경, 테두리 없음)
     cols = 4
-    max_rows = 4 if h >= w * 1.2 else 3
-    n = min(len(pool), cols * max_rows)
-    if n >= 12 and n % cols != 0 and n > cols * (n // cols):
-        pass  # 마지막 줄 부족해도 가운데 정렬로 처리
-    chosen = pool[:n] if len(pool) <= cols * max_rows else rng.sample(pool, n)
-    # 원본 순서 유지(번호순)로 보여주는 게 자연스러움
-    idx = {id(s): i for i, s in enumerate(stickers)}
-    chosen.sort(key=lambda s: idx.get(id(s), 0))
-    rows = math.ceil(n / cols)
-    grid_top = title_bottom + h * 0.02
+    grid_top = top_h + h * 0.025
+    grid_bottom = h - bot_h - h * 0.02
     grid_h = grid_bottom - grid_top
-    side = w * 0.06
+    max_rows = 6 if h >= w * 1.2 else 4
+    n = min(len(pool), cols * max_rows)
+    idx = {id(s): i for i, s in enumerate(stickers)}
+    chosen = (pool[:n] if len(pool) <= cols * max_rows else rng.sample(pool, n))
+    chosen.sort(key=lambda s: idx.get(id(s), 0))
+    rows = max(1, math.ceil(n / cols))
+    side = w * 0.05
     cell_w = (w - side * 2) / cols
     cell_h = grid_h / rows
     for i, s in enumerate(chosen):
         r, c = i // cols, i % cols
         in_row = min(cols, n - r * cols)
-        row_offset = (cols - in_row) * cell_w / 2  # 마지막 줄 가운데 정렬
-        st = prep_sticker(s, cell_h * 0.82, outline=True, outline_ratio=0.02, max_w=cell_w * 0.9,
-                          max_upscale=2.0)
+        row_offset = (cols - in_row) * cell_w / 2
+        st = prep_sticker(s, cell_h * 0.86, outline=False, max_w=cell_w * 0.92, max_upscale=2.0)
         x = side + row_offset + c * cell_w + (cell_w - st.width) / 2
         yy = grid_top + r * cell_h + (cell_h - st.height) / 2
         img.alpha_composite(st, (int(x), int(yy)))
