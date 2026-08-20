@@ -110,9 +110,23 @@ with tab_banner:
                 results.append((v, name, p, layers.get(name)))
             prog.progress((v + 1) / variants, text=f"시안 {v + 1}/{variants} 완료")
         prog.empty()
-        st.session_state["gen"] = {"data": data, "imgs": imgs, "results": results, "workdir": workdir,
+        # 메모리 절약: 이전 결과 폴더 삭제 + 세션에는 축소본 스티커만 보관
+        prev = st.session_state.get("gen")
+        if prev and prev.get("workdir") and prev["workdir"] != workdir:
+            shutil.rmtree(prev["workdir"], ignore_errors=True)
+        small = []
+        for im in imgs:
+            if max(im.size) > 480:
+                sc = 480 / max(im.size)
+                im = im.resize((int(im.width * sc), int(im.height * sc)), Image.LANCZOS)
+            small.append(im)
+        st.session_state["gen"] = {"data": data, "imgs": small, "results": results, "workdir": workdir,
                                    "safe_title": safe_title, "variants": variants}
         st.session_state.pop("edit_target", None)
+        import gc
+        del imgs
+        bg.LAYERS = {}
+        gc.collect()
 
     gen = st.session_state.get("gen")
     if gen:
@@ -266,6 +280,8 @@ with tab_card:
             st.error(f"생성 실패: {e}\n```\n{log.getvalue()[-800:]}\n```")
             st.stop()
         st.session_state["cardnews_done"] = str(out_root)
+        import gc
+        gc.collect()
 
     cn_root = st.session_state.get("cardnews_done")
     if cn_root and os.path.isdir(cn_root):
