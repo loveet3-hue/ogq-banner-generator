@@ -5,4 +5,4 @@ pandas
 openpyxl
 jinja2
 pyyaml
-playwright==1.49.1
+playwright
