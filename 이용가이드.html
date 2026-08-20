@@ -1,0 +1,162 @@
+<title>OGQ 콘텐츠 생성기 가이드</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#FBF9F5; --card:#FFFFFF; --ink:#2B2A33; --sub:#6D6A78;
+  --accent:#FF7A59; --accent-soft:#FFEDE6; --mint:#3FA98B; --mint-soft:#E4F4EE;
+  --line:#ECE8E0; --chip:#F4F1EB; --code:#F4F1EB;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1C1B21; --card:#26252C; --ink:#F0EEF4; --sub:#A8A4B3;
+    --accent:#FF8A6B; --accent-soft:#3A2A24; --mint:#5FC4A6; --mint-soft:#213730;
+    --line:#37353E; --chip:#312F38; --code:#312F38;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1C1B21; --card:#26252C; --ink:#F0EEF4; --sub:#A8A4B3;
+  --accent:#FF8A6B; --accent-soft:#3A2A24; --mint:#5FC4A6; --mint-soft:#213730;
+  --line:#37353E; --chip:#312F38; --code:#312F38;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:'Noto Sans KR',-apple-system,'Pretendard',sans-serif;
+  font-size:15.5px;line-height:1.75;}
+.wrap{max-width:720px;margin:0 auto;padding:48px 20px 80px}
+h1,h2{font-family:'Jua','Noto Sans KR',sans-serif;font-weight:400;letter-spacing:.01em;text-wrap:balance}
+h1{font-size:2.1rem;margin:.2em 0 .1em}
+h2{font-size:1.45rem;margin:0}
+.eyebrow{color:var(--accent);font-weight:700;font-size:.85rem;letter-spacing:.12em}
+.lede{color:var(--sub);margin-top:6px}
+.urlbox{margin:26px 0 8px;background:var(--card);border:2px solid var(--accent);border-radius:16px;
+  padding:18px 22px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline}
+.urlbox a{font-family:'Jua',sans-serif;font-size:1.35rem;color:var(--accent);text-decoration:none;word-break:break-all}
+.urlbox span{color:var(--sub);font-size:.9rem}
+section{margin-top:44px}
+.sec-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.sec-head .tag{background:var(--mint-soft);color:var(--mint);font-weight:700;font-size:.8rem;
+  padding:3px 10px;border-radius:999px;white-space:nowrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:12px}
+ol.steps{margin:0;padding:0;list-style:none;counter-reset:s}
+ol.steps li{counter-increment:s;position:relative;padding:10px 0 10px 44px;border-bottom:1px dashed var(--line)}
+ol.steps li:last-child{border-bottom:none}
+ol.steps li::before{content:counter(s);position:absolute;left:0;top:12px;width:28px;height:28px;
+  background:var(--accent-soft);color:var(--accent);font-weight:700;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:.9rem}
+b.ui{background:var(--chip);border:1px solid var(--line);border-radius:7px;padding:1px 8px;font-weight:600;white-space:nowrap}
+code{background:var(--code);border-radius:6px;padding:2px 7px;font-size:.88em;
+  font-family:ui-monospace,'SF Mono',Menlo,monospace}
+table{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:6px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--sub);font-weight:600;font-size:.83rem;letter-spacing:.04em}
+.twrap{overflow-x:auto}
+.note{background:var(--mint-soft);border-radius:12px;padding:14px 18px;margin-top:14px;font-size:.94rem}
+.note b{color:var(--mint)}
+.faq dt{font-weight:700;margin-top:18px}
+.faq dt::before{content:"Q. ";color:var(--accent)}
+.faq dd{margin:4px 0 0;color:var(--sub)}
+.faq dd::before{content:"A. ";color:var(--mint);font-weight:700}
+footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);color:var(--sub);font-size:.87rem}
+@media (prefers-reduced-motion: no-preference){ a{transition:opacity .15s} a:hover{opacity:.75} }
+</style>
+<div class="wrap">
+  <div class="eyebrow">OGQ 운영팀 도구</div>
+  <h1>🎨 OGQ 콘텐츠 생성기 가이드</h1>
+  <p class="lede">스티커 판매 링크 하나로 플랫폼 배너 <b>9종 + SNS 홍보 이미지 2종</b>을,
+  인터뷰 엑셀 하나로 <b>인스타 카드뉴스</b>를 자동으로 만드는 웹 도구입니다.
+  설치도, 로그인도 필요 없습니다. Windows / Mac 모두 사용 가능.</p>
+
+  <div class="urlbox">
+    <a href="https://ogq-banner.streamlit.app" target="_blank" rel="noopener">ogq-banner.streamlit.app</a>
+    <span>← 브라우저 주소창에 입력하거나 클릭. 즐겨찾기 추천!</span>
+  </div>
+  <p class="lede" style="font-size:.88rem">⏰ 한동안 아무도 안 쓰면 서버가 잠들어요. 첫 화면에
+  <b>"Zzzz… get this app back up"</b> 버튼이 보이면 눌러주고 30초쯤 기다리면 됩니다.</p>
+
+  <section>
+    <div class="sec-head"><span class="tag">탭 1</span><h2>🖼 배너 생성기</h2></div>
+    <div class="card">
+      <ol class="steps">
+        <li><b class="ui">소스 선택</b> — 둘 중 편한 방법으로:
+          <br>· <b>OGQ마켓 링크</b>: 판매 페이지 주소를 붙여넣기
+          <br>· <b>스티커 원본 zip 업로드</b>: 원본 패키지(main/tab/1~24.png)를 올리기 (더 선명함)</li>
+        <li><b class="ui">출시일</b> 입력 — SNS 홍보 이미지의 하단 문구가 됩니다. 예: <code>8월 19일</code> (비우면 "NEW 출시!")</li>
+        <li><b class="ui">✨ 배너 만들기</b> 클릭 → 30초~1분 대기</li>
+        <li>미리보기 확인 후 <b class="ui">⬇️ 배너 전체 다운로드 (zip)</b></li>
+      </ol>
+      <div class="note"><b>마음에 안 들면?</b> 「배너 만들기」를 다시 누르세요.
+      배경·색·배치가 매번 새로운 조합으로 나옵니다. 「시안 개수」를 2~3으로 올리면 한 번에 여러 시안이 나와요.</div>
+    </div>
+    <div class="card">
+      <b>만들어지는 파일 11종</b>
+      <div class="twrap"><table>
+        <tr><th>용도</th><th>규격</th></tr>
+        <tr><td>NAVER OGQ마켓 상단 배너</td><td>PC 824×464 · MO 640×360</td></tr>
+        <tr><td>채팅+ OGQ마켓 메인 상단</td><td>984×552</td></tr>
+        <tr><td>크리에이터 스튜디오 대시보드</td><td>PC 1440×180 · MO 350×200 <i>(왼쪽 텍스트 영역 비움)</i></td></tr>
+        <tr><td>크리에이터 스튜디오 랜딩</td><td>PC 1020×680 · MO 660×440 <i>(가운데 텍스트 영역 비움)</i></td></tr>
+        <tr><td>SOOP OGQ마켓 메인 상단</td><td>PC 1344×260 · MO 672×440 <i>(가이드 규정 반영)</i></td></tr>
+        <tr><td>SNS 출시 홍보 이미지</td><td>세로 1080×1350 · 정사각 1080×1080 <i>(제목+스티커 그리드+출시일)</i></td></tr>
+      </table></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="tag">탭 1</span><h2>✏️ 배너 편집</h2></div>
+    <div class="card">
+      <p style="margin-top:0">배너 생성 후 아래 <b class="ui">배너 편집</b>에서 수정할 배너를 고르면 편집 화면이 열립니다.</p>
+      <div class="twrap"><table>
+        <tr><th>하고 싶은 것</th><th>방법</th></tr>
+        <tr><td>스티커 옮기기 / 크기 / 회전</td><td>드래그 · 모서리 핸들 끌기</td></tr>
+        <tr><td>스티커 일부만 남기기 (글자 떼기)</td><td>스티커 클릭 → <b class="ui">✂ 자르기</b> → 남길 영역 지정 → 적용</td></tr>
+        <tr><td>부분만 지우기</td><td>스티커 클릭 → <b class="ui">◌ 지우개</b> → 문지르기 → 지우개 끝</td></tr>
+        <tr><td>글자 수정</td><td>글자를 <b>더블클릭</b>해서 타이핑 (폰트·색·테두리 변경 가능)</td></tr>
+        <tr><td>글자 추가</td><td><b class="ui">＋ 텍스트</b></td></tr>
+        <tr><td>스티커 추가</td><td>화면 아래 스티커 목록에서 클릭</td></tr>
+        <tr><td>실수했을 때</td><td><b class="ui">↶ 실행취소</b> 또는 <b class="ui">처음으로</b></td></tr>
+        <tr><td>저장</td><td><b class="ui">⬇ PNG 다운로드</b> — 원본 해상도로 저장됩니다</td></tr>
+      </table></div>
+      <div class="note"><b>주의:</b> 편집한 결과는 「전체 다운로드 zip」에 포함되지 않아요.
+      편집한 배너는 꼭 <b>PNG 다운로드</b> 버튼으로 따로 저장하세요.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="tag">탭 2</span><h2>📰 인터뷰 카드뉴스</h2></div>
+    <div class="card">
+      <ol class="steps">
+        <li>네이버 폼 → 응답 → <b>엑셀(.xlsx) 다운로드</b> 한 파일을 그대로 업로드
+          <br><span style="color:var(--sub);font-size:.9rem">처음이라면 「샘플 데이터로 먼저 테스트해보기」를 켜서 체험해보세요</span></li>
+        <li>옵션 선택 — <b class="ui">월</b>, <b class="ui">카드 규격</b>(정사각 1:1 / 세로 4:5), <b class="ui">배경 테마</b>(auto 추천), <b class="ui">응답자</b>(전체 또는 1명)</li>
+        <li><b class="ui">📰 카드뉴스 만들기</b> 클릭</li>
+        <li>크리에이터별로 <b>표지 + Q&A 카드 + 인스타 캡션 + 블로그 글</b>이 생성됩니다 → 전체 zip 다운로드</li>
+      </ol>
+      <div class="note"><b>자동으로 되는 것:</b> 엑셀 응답에 OGQ마켓 링크가 있으면
+      크리에이터 이름과 캐릭터 이미지를 알아서 찾아 넣고, 크리에이터마다 다른 파스텔 테마를 배정합니다.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>🙋 자주 묻는 질문</h2></div>
+    <div class="card">
+      <dl class="faq" style="margin:0">
+        <dt>화면이 안 열리고 "Zzzz" 라고 나와요</dt>
+        <dd>서버가 자는 중이에요. 파란 버튼을 누르고 30초 기다리면 켜집니다.</dd>
+        <dt>카드뉴스 첫 생성이 유난히 오래 걸려요</dt>
+        <dd>서버가 깨어난 직후 첫 1회는 렌더링 엔진을 준비하느라 1~2분 더 걸립니다. 그 다음부터는 빨라요.</dd>
+        <dt>디자인이 마음에 안 들어요</dt>
+        <dd>만들기 버튼을 다시 누르면 완전히 새로운 디자인이 나옵니다. 몇 번 돌려서 고르시고, 세부 수정은 ✏️ 편집에서.</dd>
+        <dt>업로드한 파일은 어디에 저장되나요?</dt>
+        <dd>서버에 남지 않습니다. 생성이 끝나면 다운로드한 zip만 내 컴퓨터에 남아요.</dd>
+        <dt>인터넷 없이 / Mac 앱으로 쓰고 싶어요</dt>
+        <dd>Drive 공유드라이브 → 112_운영팀 → 08.기타 자료 → Ai개발 폴더의 「OGQ 배너 생성기.zip」을 받아 「배너 생성기.app」을 실행하면 됩니다 (Mac 전용, 첫 실행 시 시스템 설정 → 개인정보 보호 및 보안 → "그래도 열기" 1회 필요).</dd>
+      </dl>
+    </div>
+  </section>
+
+  <footer>
+    문의·기능 요청: 운영팀 권은택 · 도구가 이상하면 언제든 알려주세요, 바로 고칩니다.<br>
+    소스: github.com/loveet3-hue/ogq-banner-generator · 2026.08 기준
+  </footer>
+</div>
