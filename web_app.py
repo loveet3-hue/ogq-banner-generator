@@ -186,6 +186,8 @@ with tab_card:
     with st.container(border=True):
         xlsx = st.file_uploader("인터뷰 응답 엑셀 (.xlsx)", type=["xlsx"],
                                 help="네이버 폼 → 응답 → 엑셀 다운로드 파일 그대로")
+        use_sample = st.toggle("샘플 데이터로 먼저 테스트해보기", value=False,
+                               help="엑셀이 없어도 내장 샘플 응답으로 작동을 확인할 수 있습니다")
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             month = st.text_input("월", value=mc.load_config(Path(CARDNEWS_DIR) / "config.yaml").get("month", "8월"))
@@ -202,10 +204,14 @@ with tab_card:
         # 응답자 선택
         row_pick = "전체"
         df = None
+        tmp_xlsx = None
         if xlsx is not None:
             tmp_xlsx = os.path.join(tempfile.mkdtemp(prefix="ogq_cn_"), unicodedata.normalize("NFC", xlsx.name))
             with open(tmp_xlsx, "wb") as f:
                 f.write(xlsx.getbuffer())
+        elif use_sample:
+            tmp_xlsx = os.path.join(CARDNEWS_DIR, "responses_multi_sample.xlsx")
+        if tmp_xlsx:
             try:
                 base_cfg_probe = mc.load_config(Path(CARDNEWS_DIR) / "config.yaml")
                 df = mc.load_responses(Path(tmp_xlsx), base_cfg_probe)
