@@ -1,0 +1,7 @@
+pandas
+openpyxl
+jinja2
+pyyaml
+playwright
+pillow          # 샘플 이미지 생성용 (make_sample.py)
+certifi         # 맥에서 SSL 인증서 오류 방지

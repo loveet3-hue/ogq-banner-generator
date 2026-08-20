@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+{{ fonts_css }}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --body-font: 'BodyFont', 'Malgun Gothic', sans-serif;
+  --body-bold-font: 'BodyBoldFont', 'BodyFont', 'Malgun Gothic', sans-serif;
+}
+
+body {
+  width: {{ card_w }}px;
+  {% if mode == 'card' %}height: {{ card_h }}px; overflow: hidden;{% endif %}
+  background: {{ theme.bg }};
+  position: relative;
+  font-family: var(--body-font);
+}
+
+.blob {
+  position: absolute;
+  background: {{ theme.blob }};
+  border-radius: 50%;
+  filter: blur(6px);
+  z-index: 0;
+}
+
+.chat {
+  position: relative;
+  z-index: 2;
+  padding: 90px 64px 0 64px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== 공통 말풍선 ===== */
+.row {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+.row.q { justify-content: flex-start; margin-top: 56px; }
+.row.a { justify-content: flex-end; margin-top: 34px; }
+.row:first-child, .m-item:first-child .row { margin-top: 0; }
+
+.avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: #ffffff;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.10);
+}
+
+.bubble {
+  position: relative;
+  max-width: 700px;
+  padding: 30px 38px;
+  font-size: 38px;
+  line-height: 1.55;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+/* 질문(인터뷰어) — 하늘색, 왼쪽 */
+.row.q .avatar { margin-right: 26px; }
+.bubble.q {
+  background: #5FC6E6;
+  color: #ffffff;
+  font-family: var(--body-bold-font);
+  font-weight: 700;
+  border-radius: 30px;
+  border-top-left-radius: 8px;
+}
+.bubble.q::before {          /* 아바타 쪽 꼬리 */
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 26px;
+  width: 0;
+  height: 0;
+  border-top: 12px solid transparent;
+  border-bottom: 12px solid transparent;
+  border-right: 18px solid #5FC6E6;
+}
+
+/* 답변(크리에이터) — 흰색, 오른쪽 */
+.row.a .avatar { margin-left: 26px; }
+.bubble.a {
+  background: #ffffff;
+  color: #222222;
+  border-radius: 30px;
+  border-top-right-radius: 8px;
+  box-shadow: 0 6px 16px rgba({{ theme.shadow }}, 0.28);
+}
+.bubble.a::after {           /* 아바타 쪽 꼬리 */
+  content: '';
+  position: absolute;
+  right: -16px;
+  top: 26px;
+  width: 0;
+  height: 0;
+  border-top: 12px solid transparent;
+  border-bottom: 12px solid transparent;
+  border-left: 18px solid #ffffff;
+}
+/* 이어지는 답변(같은 답변의 2번째 이후 말풍선)은 아바타 자리만 비움 */
+.row.a.cont .avatar { visibility: hidden; }
+
+/* 페이지 인디케이터 */
+.dots {
+  position: absolute;
+  bottom: 44px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  z-index: 3;
+}
+.dot { width: 16px; height: 16px; border-radius: 50%; background: #b9cfc4; }
+.dot.active { background: #4a4a4a; }
+
+/* ===== 측정 모드 ===== */
+{% if mode == 'measure' %}
+body { height: auto; }
+.m-item { display: block; }
+{% endif %}
+</style>
+</head>
+<body>
+
+{% if mode == 'card' %}
+  {% for b in blobs %}
+  <div class="blob" style="left:{{ b.x }}px; top:{{ b.y }}px; width:{{ b.w }}px; height:{{ b.h }}px; opacity:{{ b.op }};"></div>
+  {% endfor %}
+{% endif %}
+
+<div class="chat">
+  {% for it in items %}
+    {% if mode == 'measure' %}<div class="m-item">{% endif %}
+    {% if it.type == 'q' %}
+    <div class="row q">
+      <img class="avatar" src="{{ interviewer_avatar }}" alt="">
+      <div class="bubble q">{{ it.text }}</div>
+    </div>
+    {% else %}
+    <div class="row a{% if not loop.first and items[loop.index0 - 1].type == 'a' %} cont{% endif %}">
+      <div class="bubble a">{{ it.text }}</div>
+      <img class="avatar" src="{{ creator_avatar }}" alt="">
+    </div>
+    {% endif %}
+    {% if mode == 'measure' %}</div>{% endif %}
+  {% endfor %}
+</div>
+
+{% if mode == 'card' %}
+<div class="dots">
+  {% for i in range(total_pages) %}
+  <div class="dot{% if i + 1 == page_num %} active{% endif %}"></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+{{ fonts_css }}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --title-font: 'TitleFont', 'Malgun Gothic', sans-serif;
+  --hand-font: 'HandFont', 'TitleFont', 'Malgun Gothic', sans-serif;
+  --body-font: 'BodyFont', 'Malgun Gothic', sans-serif;
+  --body-bold-font: 'BodyBoldFont', 'BodyFont', 'Malgun Gothic', sans-serif;
+}
+
+body {
+  width: {{ card_w }}px;
+  height: {{ card_h }}px;
+  background: {{ theme.bg }};
+  overflow: hidden;
+  position: relative;
+  font-family: var(--body-font);
+}
+
+/* 배경 구름 블롭 */
+.blob {
+  position: absolute;
+  background: {{ theme.blob }};
+  border-radius: 50%;
+  filter: blur(6px);
+}
+
+/* 반짝이 장식 */
+.spark {
+  position: absolute;
+  z-index: 2;
+}
+
+/* 장식용 미니 말풍선 (채팅 컨셉 힌트) */
+.deco-bubble {
+  position: absolute;
+  z-index: 2;
+  border-radius: 22px;
+  padding: 14px 24px;
+  font-family: var(--body-bold-font);
+  font-weight: 800;
+  font-size: 28px;
+  transform: rotate(-6deg);
+  box-shadow: 0 5px 12px rgba({{ theme.shadow }}, 0.22);
+}
+.deco-bubble.left {
+  background: #5FC6E6;
+  color: #ffffff;
+  left: 88px;
+  top: 132px;
+}
+.deco-bubble.right {
+  background: #ffffff;
+  color: #F5851F;
+  right: 84px;
+  top: 258px;
+  transform: rotate(5deg);
+}
+
+.content {
+  position: relative;
+  z-index: 3;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 150px;
+}
+
+/* 타이틀 1행: "크리에이터" 알약 */
+.pill {
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 18px 64px;
+  box-shadow: 5px 7px 0 rgba({{ theme.shadow }}, 0.25);
+  transform: rotate(-2deg);
+}
+.pill span {
+  font-family: var(--title-font);
+  font-size: 118px;
+  font-weight: 900;
+  background: linear-gradient(180deg, #FFB347 0%, #F5851F 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1.12;
+}
+
+/* 타이틀 2행: 아바타 + "인터뷰" */
+.line-interview {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-top: 34px;
+}
+.avatar {
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  background: #ffffff;
+  object-fit: cover;
+  border: 6px solid #ffffff;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.13);
+}
+.interview-text {
+  font-family: var(--title-font);
+  font-size: 172px;
+  font-weight: 900;
+  color: #1c1c1c;
+  line-height: 1;
+  -webkit-text-stroke: 9px #ffffff;
+  paint-order: stroke fill;
+  text-shadow: 6px 8px 0 rgba({{ theme.shadow }}, 0.30);
+}
+
+/* 부제 */
+.subtitle {
+  margin-top: 54px;
+  font-family: var(--hand-font);
+  font-size: 46px;
+  color: #222;
+  text-align: center;
+  line-height: 1.5;
+}
+.subtitle b {
+  font-weight: inherit;
+  color: #2E8B5F;
+  background: linear-gradient(transparent 62%, #FFE6A8 62%);  /* 형광펜 효과 */
+  padding: 0 4px;
+}
+
+/* 버튼 */
+.cta {
+  margin-top: 44px;
+  background: linear-gradient(180deg, #7ED0EA 0%, #5FC0E2 100%);
+  color: #ffffff;
+  font-family: var(--body-bold-font);
+  font-weight: 800;
+  font-size: 42px;
+  padding: 22px 66px;
+  border-radius: 999px;
+  box-shadow: 0 7px 0 rgba(70, 140, 170, 0.45);
+}
+
+/* 하단 대표 이미지 */
+.main-image {
+  position: absolute;
+  bottom: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-height: 300px;
+  max-width: 640px;
+  object-fit: contain;
+  z-index: 2;
+  filter: drop-shadow(0 8px 14px rgba({{ theme.shadow }}, 0.28));
+}
+
+/* 페이지 인디케이터 */
+.dots {
+  position: absolute;
+  bottom: 44px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  z-index: 4;
+}
+.dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #b9cfc4;
+}
+.dot.active { background: #4a4a4a; }
+
+{% if compact %}
+/* ===== 정사각형(1080x1080) 컴팩트 레이아웃 ===== */
+.content { padding-top: 108px; }
+.pill { padding: 14px 52px; }
+.pill span { font-size: 96px; }
+.line-interview { margin-top: 26px; gap: 20px; }
+.avatar { width: 120px; height: 120px; }
+.interview-text { font-size: 140px; -webkit-text-stroke: 8px #ffffff; }
+.subtitle { margin-top: 40px; font-size: 40px; }
+.cta { margin-top: 34px; font-size: 36px; padding: 18px 56px; }
+.main-image { bottom: 78px; max-height: 240px; }
+.deco-bubble.left { left: 60px; top: 96px; }
+.deco-bubble.right { right: 56px; top: 200px; }
+.dots { bottom: 36px; }
+{% endif %}
+</style>
+</head>
+<body>
+
+{% for b in blobs %}
+<div class="blob" style="left:{{ b.x }}px; top:{{ b.y }}px; width:{{ b.w }}px; height:{{ b.h }}px; opacity:{{ b.op }};"></div>
+{% endfor %}
+
+<!-- 장식 요소 (크리에이터마다 배치가 달라짐) -->
+<div class="deco-bubble left">Q.</div>
+<div class="deco-bubble right">A!</div>
+{% for s in sparks %}
+<div class="spark" style="left:{{ s.x }}px; top:{{ s.y }}px; font-size:{{ s.size }}px; color:{{ s.color }}; transform:rotate({{ s.rot }}deg);">✦</div>
+{% endfor %}
+
+<div class="content">
+  <div class="pill"><span>크리에이터</span></div>
+
+  <div class="line-interview">
+    <img class="avatar" src="{{ interviewer_avatar }}" alt="">
+    <div class="interview-text">인터뷰</div>
+  </div>
+
+  <div class="subtitle">
+    OGQ 인기 크리에이터 <b>{{ cfg.creator_name }}</b>님의<br>인터뷰를 만나보세요.
+  </div>
+
+  <div class="cta">바로 확인하기</div>
+</div>
+
+<img class="main-image" src="{{ creator_main }}" alt="">
+
+<div class="dots">
+  {% for i in range(total_pages) %}
+  <div class="dot{% if i + 1 == page_num %} active{% endif %}"></div>
+  {% endfor %}
+</div>
+
+</body>
+</html>

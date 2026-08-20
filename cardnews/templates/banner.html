@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+{{ fonts_css }}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --title-font: 'TitleFont', 'Malgun Gothic', sans-serif;
+  --body-font: 'BodyFont', 'Malgun Gothic', sans-serif;
+  --body-bold-font: 'BodyBoldFont', 'BodyFont', 'Malgun Gothic', sans-serif;
+}
+
+body {
+  width: {{ card_w }}px;
+  height: {{ card_h }}px;
+  background: {{ theme.bg }};
+  overflow: hidden;
+  position: relative;
+  font-family: var(--body-font);
+}
+
+.blob {
+  position: absolute;
+  background: {{ theme.blob }};
+  border-radius: 50%;
+  filter: blur(5px);
+}
+
+.spark { position: absolute; z-index: 2; }
+
+/* 공통 요소 */
+.pill {
+  background: #ffffff;
+  border-radius: 999px;
+  box-shadow: 4px 5px 0 rgba({{ theme.shadow }}, 0.22);
+  display: inline-block;
+  white-space: nowrap;
+}
+.pill span {
+  font-family: var(--title-font);
+  font-weight: 900;
+  background: linear-gradient(180deg, #FFB347 0%, #F5851F 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1.25;
+}
+.name-line {
+  font-family: var(--title-font);
+  font-weight: 900;
+  color: #1c1c1c;
+  white-space: nowrap;
+}
+.name-line b {
+  font-weight: inherit;
+  color: #2E8B5F;
+  background: linear-gradient(transparent 60%, #FFE6A8 60%);
+  padding: 0 3px;
+}
+.chr {
+  object-fit: contain;
+  filter: drop-shadow(0 5px 9px rgba({{ theme.shadow }}, 0.30));
+}
+
+{% if strip %}
+/* ===== 가로 스트립 배너 (1440x180 등) ===== */
+.wrap {
+  position: relative;
+  z-index: 3;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+  padding: 0 70px;
+}
+.pill { padding: 12px 42px; }
+.pill span { font-size: 52px; }
+.name-line { font-size: 46px; }
+.chr { height: {{ card_h - 36 }}px; }
+{% else %}
+/* ===== 박스형 배너 (824x464 기준, scale로 축소) ===== */
+.stage {
+  position: absolute;
+  left: {{ tx }}px;
+  top: {{ ty }}px;
+  width: 824px;
+  height: 464px;
+  transform: scale({{ k }});
+  transform-origin: top left;
+  z-index: 3;
+}
+.text-col {
+  position: absolute;
+  left: 66px;
+  top: 50%;
+  transform: translateY(-54%);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.pill { padding: 14px 42px; }
+.pill span { font-size: 50px; }
+.name-line { font-size: 45px; margin-top: 24px; margin-left: 8px; }
+.deco-row {
+  margin-top: 22px;
+  margin-left: 10px;
+  font-family: var(--body-bold-font);
+  font-weight: 800;
+  font-size: 23px;
+  color: #ffffff;
+  display: flex;
+  gap: 12px;
+}
+.deco-row .q { background: #5FC6E6; border-radius: 14px; padding: 6px 16px; transform: rotate(-4deg); }
+.deco-row .a { background: #ffffff; color: #F5851F; border-radius: 14px; padding: 6px 16px; transform: rotate(3deg); }
+.chr {
+  position: absolute;
+  right: 34px;
+  bottom: 26px;
+  height: 235px;
+  max-width: 245px;
+  z-index: 2;
+}
+{% endif %}
+</style>
+</head>
+<body>
+
+{% for b in blobs %}
+<div class="blob" style="left:{{ b.x }}px; top:{{ b.y }}px; width:{{ b.w }}px; height:{{ b.h }}px; opacity:{{ b.op }};"></div>
+{% endfor %}
+
+{% for s in sparks %}
+<div class="spark" style="left:{{ s.x }}px; top:{{ s.y }}px; font-size:{{ s.size }}px; color:{{ s.color }}; transform:rotate({{ s.rot }}deg);">✦</div>
+{% endfor %}
+
+{% if strip %}
+<div class="wrap">
+  <div class="pill"><span>OGQ 크리에이터 인터뷰</span></div>
+  <div class="name-line"><b>{{ name }}</b> 크리에이터 편</div>
+  <img class="chr" src="{{ creator_main }}" alt="">
+</div>
+{% else %}
+<div class="stage">
+  <div class="text-col">
+    <div class="pill"><span>OGQ 크리에이터 인터뷰</span></div>
+    <div class="name-line"><b>{{ name }}</b> 크리에이터 편</div>
+    <div class="deco-row"><div class="q">Q.</div><div class="a">A!</div></div>
+  </div>
+  <img class="chr" src="{{ creator_main }}" alt="">
+</div>
+{% endif %}
+
+</body>
+</html>

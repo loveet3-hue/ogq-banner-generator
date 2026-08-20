@@ -1,0 +1,92 @@
+# ===== 월간 크리에이터 인터뷰 카드뉴스 설정 =====
+
+# 카드 규격: "square"(1080x1080, 1:1 피드) 또는 "portrait"(1080x1350, 4:5 세로형)
+card_format: "square"
+
+# 생성 결과를 복사할 폴더 — 구글 드라이브 데스크톱 동기화 폴더라서
+# 여기 복사되면 자동으로 구글 드라이브(공유드라이브 > 112_운영팀 > 08.기타 자료 > Ai개발)에 업로드됨
+copy_to: "G:\\공유 드라이브\\112_운영팀\\08.기타 자료\\Ai개발"
+
+# 배경 테마
+#   auto   = 크리에이터마다 다른 테마 + 장식 배치 자동 배정 (기본, 추천)
+#   mint / pink / lavender / sky / cream / peach = 전원 같은 테마로 고정
+#   random = 실행할 때마다 무작위
+# 실행 시 --theme 옵션으로도 지정 가능 (CLI가 우선)
+# 커스텀 색상도 가능: theme: { bg: "#C9E7DB", blob: "#E4F4EC", shadow: "90, 140, 115" }
+theme: "auto"
+
+# 요소별 PNG 분리 저장: 배경/말풍선/표지 요소/프로필 이미지를
+# output/<이름>/layers/ 폴더에 개별 투명 PNG로 함께 저장 (수정 작업용)
+export_layers: true
+
+month: "8월"
+year: "2026"
+creator_name: "크리에이터"
+
+# 엑셀에서 크리에이터 이름을 읽을 컬럼 (설문 문항 제목과 똑같이 적어야 함)
+name_column: "OGQ 크리에이터명을 적어주세요.(*)"
+
+# ===== OGQ 마켓 자동 연동 =====
+# 인터뷰어 캐릭터: OGQ 마켓 스티커 링크를 넣으면 대표 이미지를 자동 다운로드해 사용
+interviewer_url: "https://ogqmarket.naver.com/artworks/sticker/detail?artworkId=625d30584017f"
+
+# 인터뷰 대상 크리에이터: 링크를 넣으면 이미지 + 크리에이터명이 자동 반영됨
+# (실행 시 --creator-url 옵션으로도 지정 가능하며, CLI가 우선함)
+# creator_url: "https://ogqmarket.naver.com/artworks/sticker/detail?artworkId=6573c1da2f4d0"
+
+# 이미지 경로 (위 링크가 없을 때 사용하는 수동 지정 경로, 배경 투명 PNG 권장)
+interviewer_avatar: "assets/interviewer.png"   # 인터뷰어 캐릭터 (표지 + 질문 말풍선 아바타)
+creator_avatar: "assets/creator_avatar.png"    # 크리에이터 말풍선용 아바타
+creator_main_image: "assets/creator_main.png"  # 표지 하단 대표 이미지
+
+# 폰트 파일명 (fonts/ 폴더에 넣기). 없으면 시스템 기본 한글 폰트로 대체됨
+fonts:
+  title: "Cafe24Ssurround.ttf"        # 표지 제목용 (통통한 손글씨 느낌)
+  hand: "OwnglyphPDH.ttf"             # 부제/손글씨 텍스트용
+  body: "Pretendard-Regular.ttf"      # 본문(말풍선)용
+  body_bold: "Pretendard-Bold.ttf"    # 굵은 본문용
+
+# 응답자별 OGQ 마켓 링크는 엑셀 어느 컬럼에 있든 자동으로 찾아냅니다.
+# naver.me 단축링크도 자동으로 풀어서 인식합니다.
+# 특정 컬럼만 보게 하고 싶을 때만 아래 주석을 풀고 컬럼명을 지정하세요.
+# url_column: "OGQ 마켓 대표 스티커 링크"
+
+# 엑셀 컬럼명 → 카드에 표시할 질문 문구 매핑 (순서대로 카드에 들어감)
+# column은 설문 문항 제목과 완전히 같지 않아도 됨 (앞부분만 맞으면 자동 매칭)
+# ※ '개선 사항' 문항은 내부 참고용이라 카드에 넣지 않음
+questions:
+  - column: "자기소개 부탁드립니다"
+    display: "자기소개 부탁드립니다!"
+  - column: "프로 크리에이터가 되신 것을 축하드립니다"
+    display: "프로 크리에이터가 되신 것을 축하드립니다! 소감이 궁금해요 🎉"
+  - column: "OGQ를 이용하게 된 계기와 처음 스티커를 판매했을 때의 이야기를 들려주세요"
+    display: "OGQ를 이용하게 된 계기와 처음 스티커를 판매했을 때의 이야기를 들려주세요."
+  - column: "크리에이터님의 스티커를 한 단어로 표현한다면 무엇인가요"
+    display: "크리에이터님의 스티커를 한 단어로 표현한다면?"
+  - column: "스티커 제작 아이디어는 주로 어디에서 얻으시나요"
+    display: "스티커 제작 아이디어는 주로 어디에서 얻으시나요?"
+  - column: "스티커 하나를 완성하기까지의 제작 과정을 알려주세요"
+    display: "스티커 하나를 완성하기까지의 제작 과정이 궁금해요!"
+  - column: "가장 기억에 남는 순간이 있다면 소개해 주세요"
+    display: "크리에이터로 활동하면서 가장 기억에 남는 순간이 있다면?"
+  - column: "OGQ가 크리에이터에게 줄 수 있는 이점이 있다면 뭐라고 생각하시나요"
+    display: "OGQ가 크리에이터에게 줄 수 있는 이점이 있다면?"
+  - column: "앞으로 OGQ에서 이루고 싶은 목표를 알려주세요"
+    display: "앞으로 OGQ에서 이루고 싶은 목표를 알려주세요!"
+  - column: "마지막으로 팬분들께 전하고 싶은 말씀이 있다면 부탁드립니다"
+    display: "마지막으로 팬분들께 전하고 싶은 한마디! 🤍"
+
+caption:
+  intro: "크리에이터 인터뷰 🎨"
+  hashtags: "#OGQ #OGQ마켓 #크리에이터인터뷰 #스티커작가"
+
+blog:
+  # {year} {month} {name} 치환 가능
+  title: "크리에이터 인터뷰 ! OGQ 크리에이터, {name}님을 만났습니다 🎨"
+  intro: |
+    안녕하세요, OGQ입니다!
+    OGQ 마켓에서 활약 중인 인기 크리에이터를 만나보는 '크리에이터 인터뷰' 시간입니다.
+  outro: |
+    인터뷰에 응해주신 {name}님께 다시 한번 감사드립니다.
+    {name}님의 스티커는 OGQ 마켓에서 만나보실 수 있어요!
+    다음 인터뷰도 많이 기대해주세요 💚

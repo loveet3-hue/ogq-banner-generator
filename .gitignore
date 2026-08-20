@@ -5,3 +5,4 @@ __pycache__/
 build/icon.iconset/
 .DS_Store
 build/backup_*.py
+cardnews/output/
