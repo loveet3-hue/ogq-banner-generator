@@ -468,3 +468,60 @@ def fill_ctype_bar(slide, sn, still_pct, anim_pct, changes, row_y=5.40, row_h=0.
             new = f'{name} {pct:.0f}%' if re.search(r'정지형|애니', old) else f'{pct:.0f}%'
             set_text(sh, new, changes, sn, '유형 비율')
     return {n1: p1, n2: p2}
+
+
+# ------------------------------------------------------------------ 시즌 캘린더 (16·23·30장)
+def fill_season_calendar(slide, sn, cards, changes):
+    """월 카드 4장을 새 기간으로 갈아 끼운다.
+
+    한 카드는 [월] [등록 시점] / [이벤트] / [추천 주제] 네 줄이고, 월 표시를 기준으로
+    같은 줄 오른쪽(등록 시점)과 아래 두 줄(이벤트·주제)을 찾아 채운다.
+    """
+    # 캘린더 제목 아래에서만 찾는다. 같은 슬라이드의 월별 매출 차트도 가로축이
+    # '1월 2월 ...'이라, 그냥 찾으면 차트 축을 카드로 착각해 덮어쓴다.
+    titles = [sh for sh in text_shapes(slide) if '캘린더' in sh.text_frame.text]
+    if not titles:
+        return 0
+    floor = max(_in(t.top) for t in titles)
+
+    heads = [sh for sh in text_shapes(slide)
+             if _in(sh.top) > floor
+             and re.fullmatch(r'\d{1,2}월', sh.text_frame.text.strip())]
+    if not heads:
+        return 0
+    # 같은 y에 여러 개 늘어선 줄이 카드 머리다
+    rows = {}
+    for sh in heads:
+        rows.setdefault(round(_in(sh.top), 2), []).append(sh)
+    y, months = max(rows.items(), key=lambda kv: len(kv[1]))
+    months.sort(key=lambda s: _in(s.left))
+    if len(months) < 2:
+        return 0
+
+    n = 0
+    for sh, card in zip(months, cards):
+        set_text(sh, card['month'], changes, sn, '캘린더 월')
+        x = _in(sh.left)
+        same_row = [t for t in text_shapes(slide)
+                    if abs(_in(t.top) - y) < EPS and _in(t.left) > x and t is not sh]
+        if same_row:
+            reg = min(same_row, key=lambda t: _in(t.left))
+            set_text(reg, card['register'], changes, sn, '캘린더 등록시점')
+        # 아래로 이어지는 줄들 (같은 x에서 시작)
+        below = sorted([t for t in text_shapes(slide)
+                        if abs(_in(t.left) - x) < EPS and 0 < _in(t.top) - y < 0.8],
+                       key=lambda t: _in(t.top))
+        if len(below) >= 1:
+            set_text(below[0], card['events'], changes, sn, '캘린더 이벤트')
+        if len(below) >= 2:
+            set_text(below[1], card['topics'], changes, sn, '캘린더 주제')
+        n += 1
+
+    # 카드가 남으면 비운다 (안 그러면 지난 기간 내용이 남는다)
+    for sh in months[len(cards):]:
+        x, = (_in(sh.left),)
+        for t in text_shapes(slide):
+            if abs(_in(t.left) - x) < EPS and 0 <= _in(t.top) - y < 0.8:
+                set_text(t, '', changes, sn, '캘린더 빈 칸')
+        set_text(sh, '', changes, sn, '캘린더 빈 칸')
+    return n

@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import ingest, metrics, fill, spec, qa, config, overrides
+from . import ingest, metrics, fill, spec, qa, config, overrides, season
 from . import reject as rj_mod
 
 HERE = Path(__file__).parent
@@ -142,6 +142,23 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
         except Exception as e:
             warn.append(f'{sn}장 유형 비율 막대: {e}')
 
+    # 시즌 캘린더 — 다음 달들의 명절·기념일. 음력이라 해마다 날짜가 바뀐다.
+    end_y, end_m = per.end
+    season_span = ''
+    for c in spec.SEASON:
+        mk, sn = c['market'], c['slide']
+        try:
+            cards = season.cards(end_y, end_m, mk)
+            season_span = season.span_label(cards)
+            if not fill.fill_season_calendar(prs.slides[sn - 1], sn, cards, ch):
+                warn.append(f'{sn}장 시즌 캘린더 카드를 찾지 못했습니다')
+            elif mk == 'SOM':
+                warn.append(
+                    f'{sn}장 캘린더의 e스포츠 일정(LCK·롤드컵 등)은 날짜 없이 넣었습니다. '
+                    f'확정 일정이 나오면 season.py의 MARKET_EVENTS에 날짜를 넣어 주세요.')
+        except Exception as e:
+            warn.append(f'{sn}장 시즌 캘린더: {e}')
+
     for k in spec.KEYWORDS:
         mk, sn = k['market'].lower(), k['slide']
         words = [flat[f'{mk}.keyword.{i}'] for i in range(1, k['count'] + 1)]
@@ -187,9 +204,10 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
             t = sh.text_frame.text
             # 템플릿(v2)에는 '2026년 상반기'로 적혀 있다. 항상 원본 템플릿에서
             # 시작하므로, 그 자리를 이번 기간 표기로 갈아 끼우면 된다.
-            nxt = '시즌 캘린더' in t
-            full = per.next_label if nxt else per.label
-            short = per.next_short if nxt else per.short
+            # 캘린더 제목은 '다음 기간'이 아니라 카드가 실제로 덮는 달을 가리켜야 한다
+            nxt = '캘린더' in t
+            full = (season_span or per.next_label) if nxt else per.label
+            short = (season_span or per.next_short) if nxt else per.short
             new = re.sub(r'\d{4}년\s*(?:상반기|하반기)', full, t)
             new = re.sub(r'(?<!\d)\d{4}\s+(?:상반기|하반기)', short, new)
             if new != t:

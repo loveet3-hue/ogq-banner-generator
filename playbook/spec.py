@@ -34,6 +34,10 @@ CHARTS = [
 # 폭이 곧 비중인 가로 띠. 글자와 폭을 함께 갱신해야 한다.
 CTYPE_BARS = [dict(market=m, slide=INSIGHT_DETAIL[m]) for m in ('NOM', 'SOM', 'COM')]
 
+# ---------------------------------------------------------------- 시즌 캘린더
+# 마켓별 '출시 및 홍보 전략' 슬라이드 하단의 월 카드 4장
+SEASON = [dict(market=m, slide=slide_of(m, 'launch')) for m in ('NOM', 'SOM', 'COM')]
+
 # ---------------------------------------------------------------- 키워드
 KEYWORDS = [dict(market=m, slide=INSIGHT_DETAIL[m], count=8) for m in ('NOM', 'SOM', 'COM')]
 
@@ -47,12 +51,6 @@ MANUAL = {
         slides=[slide_of(m, 'top25') for m in ('NOM', 'SOM', 'COM')],
         what='TOP25 콘텐츠 속성 태깅(텍스트 비중·텍스트 종류·기반 분류·상세 성격·색상 스타일)과 '
              '유형별 매출 비중 라벨. 콘텐츠를 눈으로 보고 분류하는 값이라 거래 데이터에 없음.'),
-    'season_calendar': dict(
-        slides=[slide_of(m, 'launch') for m in ('NOM', 'SOM', 'COM')],
-        what='다음 반기 시즌 캘린더(명절·기념일·시험 일정). 달력 정보라 매출 데이터에 없음.'),
-    'persona_age': dict(
-        slides=[INSIGHT_SUMMARY],
-        what='마켓별 주 연령층. 거래 데이터에 구매자 인구통계가 없음.'),
     'guides': dict(
         slides=[33, 34, 35],
         what='제작·등록 가이드. 규격 문서라 데이터와 무관 — 규격이 바뀔 때만 수정.'),
