@@ -65,17 +65,29 @@ MANUAL = {
 
 
 # ---------------------------------------------------------------- 낱개 수치
-# (슬라이드, 도형ID, 새 텍스트 서식) — 도형ID는 템플릿에서 고정이다.
-# 서식 안의 {키}는 metrics.py가 만든 지표 키.
-TEXT_BINDINGS = [
-    (7,  19, '{nom.theme.by_name.블로그/포스팅 실용.pct:g}%'),
-    (7,  31, '{som.ctype.anim_BASIS_pct:.0f}%'),
-    # 8·9·10장의 '정지형 94%' 같은 글자는 CTYPE_BARS가 막대 폭과 함께 처리한다.
-    # (여기서 글자만 바꾸면 폭이 안 따라가서 그림이 값과 어긋난다)
-    # 상반기엔 설날(2월)이 성수기라 옛 '2월/1월' 값과 같은 3.2배가 나온다.
-    # 하반기엔 2월이 아예 없으므로 성수기/비수기로 일반화해 둔다.
-    (7,  43, '{com.month.peak_vs_low_x:.1f}배'),
+# 도형ID가 아니라 '설명줄에 적힌 글자'로 자리를 찾는다. 템플릿을 다시 내보내면
+# 도형ID가 전부 바뀌어(2~14 → 2302~2306) ID로 잡아 둔 건 통째로 깨진다.
+#   anchor  : 템플릿에 적혀 있는 설명줄의 한 조각 (이걸로 카드를 찾는다)
+#   value   : 그 카드의 큰 수치에 넣을 서식
+#   caption : 설명줄 자체를 바꿀 때만. 없으면 그대로 둔다.
+STAT_CARDS = [
+    dict(slide=INSIGHT_SUMMARY, anchor='블로그·포스팅 실용 테마',
+         value='{nom.theme.by_name.블로그/포스팅 실용.pct:g}%',
+         caption='블로그·포스팅 실용 테마 매출 비중\n({period.label} 전체 매출 대비)'),
+    # '정지형 대비'가 아니라 '전체 매출 대비'다. 70.4%는 전체 매출에서 애니가
+    # 차지하는 몫이지 정지형과 견준 배수가 아니다.
+    dict(slide=INSIGHT_SUMMARY, anchor='움직이는 이모티콘 선호',
+         value='{som.ctype.anim_BASIS_pct:.0f}%',
+         caption='애니메이션 이모티콘 매출 비중\n({period.label} 전체 매출 대비)'),
+    # 성수기 달이 기간마다 바뀌므로 달 이름을 박지 않는다.
+    dict(slide=INSIGHT_SUMMARY, anchor='설날 시즌',
+         value='{com.month.peak_vs_low_x:.1f}배',
+         caption='성수기 {com.month.peak}월 매출\n({period.label} 최저 {com.month.low}월 대비)'),
 ]
+
+# 8·9·10장 '콘텐츠 유형 선호도' 제목 → 매출 기준이므로 '매출 비중'이라고 쓴다
+CTYPE_HEADINGS = [dict(slide=INSIGHT_DETAIL[m], anchor='콘텐츠 유형 선호도',
+                       text='콘텐츠 유형별 매출 비중') for m in ('NOM', 'SOM', 'COM')]
 
 # 덱 전체에서 기간 표기를 갈아 끼운다
 PERIOD_PATTERNS = [

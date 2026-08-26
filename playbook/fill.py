@@ -250,15 +250,32 @@ def open_template(path):
 
 
 # ------------------------------------------------------------------ 반려 현황(36장)
-def _hbar_rows(slide, x_axis, name_x=0.9):
+def _hbar_axis(slide):
+    """가로 막대들이 공통으로 시작하는 x. 좌표를 박아 두면 템플릿을 조금만
+    옮겨도(2.45 → 2.40) 통째로 못 찾는다."""
+    groups = {}
+    for sh in blank_shapes(slide):
+        if 0 < _in(sh.height) < 0.3 and _in(sh.width) > 0:
+            groups.setdefault(round(_in(sh.left), 2), []).append(sh)
+    if not groups:
+        return None
+    x, items = max(groups.items(), key=lambda kv: len(kv[1]))
+    return x if len(items) >= 3 else None
+
+
+def _hbar_rows(slide, x_axis=None, name_x=0.9):
     """가로 막대 행 묶음: [(이름도형, 막대도형, 값도형)] — 위에서 아래 순."""
+    if x_axis is None:
+        x_axis = _hbar_axis(slide)
+    if x_axis is None:
+        return []
     rows = []
     bars = [sh for sh in blank_shapes(slide)
             if abs(_in(sh.left) - x_axis) < EPS and 0 < _in(sh.height) < 0.3]
     for bar in sorted(bars, key=lambda s: _in(s.top)):
         y = _in(bar.top)
         names = [sh for sh in text_shapes(slide)
-                 if abs(_in(sh.top) - y) < EPS and abs(_in(sh.left) - name_x) < EPS]
+                 if abs(_in(sh.top) - y) < EPS and _in(sh.left) < x_axis - 0.05]
         vals = [sh for sh in text_shapes(slide)
                 if abs(_in(sh.top) - y) < EPS and _in(sh.left) > x_axis
                 and re.fullmatch(r'\d+(?:\.\d+)?', sh.text_frame.text.strip())]
@@ -274,7 +291,7 @@ def fill_reject_status(slide, sn, rj, month, changes, sentences=None, tails=None
     total = rj['reject.total']
 
     # 1) 가로 막대
-    rows = _hbar_rows(slide, x_axis=2.45)
+    rows = _hbar_rows(slide)
     if not rows:
         raise ValueError(f'slide {sn}: 반려 막대 행을 찾지 못했습니다')
     k = max(_in(b.width) for _, b, _ in rows) / max(c['pct'] for c in cats[:len(rows)])
@@ -599,4 +616,52 @@ def fill_top25_kpi(slide, sn, kpi_by_label, changes):
                 set_text(sh, f'{value:g}%', changes, sn, 'TOP25 KPI')
                 n += 1
                 break
+    return n
+
+
+# ------------------------------------------------------------------ 글자로 자리 찾기
+def find_by_text(slide, needle):
+    """그 글자를 담고 있는 도형. 템플릿을 다시 내보내면 도형ID가 전부 바뀌므로
+    ID 대신 글자로 찾는다."""
+    for sh in text_shapes(slide):
+        if needle in sh.text_frame.text:
+            return sh
+    return None
+
+
+def value_beside(slide, caption_shape, max_gap=1.6):
+    """설명줄 왼쪽에 붙어 있는 큰 수치 도형."""
+    y, x = _in(caption_shape.top), _in(caption_shape.left)
+    cands = [sh for sh in text_shapes(slide)
+             if sh is not caption_shape and abs(_in(sh.top) - y) < 0.25
+             and 0 < x - _in(sh.left) < max_gap]
+    return max(cands, key=lambda s: _in(s.left)) if cands else None
+
+
+CTYPE_LABEL = re.compile(r'(정지형|애니메이션)(\s*)(\d+(?:\.\d+)?)%')
+
+
+def fill_ctype_labels(slide, sn, still_pct, anim_pct, changes, min_y=4.5):
+    """'정지형 91%' · '애니메이션 70%' 같은 글자를 새 값으로.
+
+    막대 길이는 건드리지 않는다. 이 슬라이드의 막대는 손으로 다듬어져 슬라이드마다
+    구조가 달라서(어떤 장은 글자만 바뀌고 막대는 그대로다) 자동으로 늘였다 줄였다 하면
+    디자인을 망가뜨린다. 대신 build.py가 '막대 길이는 확인해 달라'고 알린다.
+    """
+    n = 0
+    for sh in list(text_shapes(slide)):
+        if _in(sh.top) < min_y:
+            continue
+        t = sh.text_frame.text
+        if not CTYPE_LABEL.search(t):
+            continue
+        pairs = []
+        for m in CTYPE_LABEL.finditer(t):
+            new = still_pct if m.group(1) == '정지형' else anim_pct
+            pairs.append((m.group(3), f'{new:.0f}'))
+        try:
+            sub_numbers(sh, pairs, changes, sn, '유형 비율')
+            n += 1
+        except ValueError:
+            continue
     return n

@@ -44,9 +44,24 @@ class Report:
         return '\n'.join(lines)
 
 
+# [[ ... ]] 로 감싼 조각은 안에 든 값이 전부 0이면 통째로 빠진다.
+# 심사 문구는 반기마다 표현이 달라져서, 어떤 항목은 그 달에 아예 안 나온다.
+# 그때 '동일·유사 0건'처럼 적히면 없느니만 못하다.
+_OPTIONAL = re.compile(r'\[\[(.*?)\]\]', re.S)
+
+
 def _resolve(fmt, flat):
     """'{nom.ctype.anim_BASIS_pct:.0f}%' → 실제 값 문자열."""
     fmt = fmt.replace('_BASIS_', f'_{config.CTYPE_BASIS}_')
+
+    def _opt(m):
+        body = m.group(1)
+        keys = re.findall(r'\{([^}:]+)', body)
+        if keys and all(not flat.get(k.replace('_BASIS_', f'_{config.CTYPE_BASIS}_'), 0)
+                        for k in keys):
+            return ''
+        return body
+    fmt = _OPTIONAL.sub(_opt, fmt)
     out, i = [], 0
     while i < len(fmt):
         if fmt[i] == '{':
@@ -134,17 +149,30 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
         except Exception as e:
             warn.append(f'{sn}장 {c["kind"]} 차트: {e}')
 
+    # 정지형/애니 비율 — 글자만 바꾼다. 막대 길이는 손으로 다듬어져 있어 건드리지 않는다.
     b = config.CTYPE_BASIS
+    bar_slides = []
     for c in spec.CTYPE_BARS:
         mk, sn = c['market'].lower(), c['slide']
         try:
-            fill.fill_ctype_bar(prs.slides[sn - 1], sn,
-                                flat[f'{mk}.ctype.still_{b}_pct'],
-                                flat[f'{mk}.ctype.anim_{b}_pct'], ch)
+            n = fill.fill_ctype_labels(prs.slides[sn - 1], sn,
+                                       flat[f'{mk}.ctype.still_{b}_pct'],
+                                       flat[f'{mk}.ctype.anim_{b}_pct'], ch)
+            if n:
+                bar_slides.append(sn)
         except Exception as e:
-            warn.append(f'{sn}장 유형 비율 막대: {e}')
+            warn.append(f'{sn}장 유형 비율: {e}')
+    if bar_slides:
+        warn.append(f'{" · ".join(f"{s}장" for s in bar_slides)}의 유형 비율은 글자만 바꿨습니다. '
+                    f'막대 길이는 손으로 그려져 있어 건드리지 않았으니 눈으로 맞춰 주세요.')
 
-    # TOP25 속성 — 콘텐츠ID로 마켓을 조회해 실제 콘텐츠를 본다
+    # 8·9·10장 제목 — 매출 기준이라 '선호도'가 아니라 '매출 비중'
+    for h in spec.CTYPE_HEADINGS:
+        sh = fill.find_by_text(prs.slides[h['slide'] - 1], h['anchor'])
+        if sh is not None:
+            fill.set_text(sh, h['text'], ch, h['slide'], '유형 비중 제목')
+
+    # TOP25 속성 — 콘텐츠ID로 마켓을 조회해 실제 이미지를 본다
     if use_artwork:
         step(3, 'TOP25 콘텐츠 조회 중 (마켓에서 이미지를 받아옵니다)')
         for c in spec.TOP25:
@@ -158,11 +186,8 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
                     warn.append(f'{sn}장 TOP25 중 {miss}종은 마켓에서 찾지 못했습니다'
                                 f'(비공개·삭제된 콘텐츠일 수 있습니다). 나머지로 계산했습니다.')
                 classified, _ = attrs.classify(got, rev)
-                filled, skipped = fill.fill_top25_table(prs.slides[sn - 1], sn, classified, ch)
+                fill.fill_top25_table(prs.slides[sn - 1], sn, classified, ch)
                 fill.fill_top25_kpi(prs.slides[sn - 1], sn, attrs.kpi_labels(got, rev), ch)
-                if skipped:
-                    warn.append(f'{sn}장 표의 {" · ".join(skipped)}은(는) 그림을 봐야 아는 값이라 '
-                                f'이전 판 그대로 두었습니다.')
                 artwork_note = True
             except Exception as e:
                 warn.append(f'{sn}장 TOP25 속성: {e}')
@@ -191,15 +216,21 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
         if n < k['count']:
             warn.append(f'{sn}장 키워드 칩 {n}/{k["count"]}개만 교체됨')
 
-    for sn, sid, fmt in spec.TEXT_BINDINGS:
-        sh = _shape_by_id(prs.slides[sn - 1], sid)
-        if sh is None:
-            warn.append(f'{sn}장 도형 {sid} 없음 — 템플릿이 바뀌었는지 확인하세요')
+    for card in spec.STAT_CARDS:
+        sn = card['slide']
+        cap = fill.find_by_text(prs.slides[sn - 1], card['anchor'])
+        if cap is None:
+            warn.append(f'{sn}장에서 "{card["anchor"]}" 문구를 찾지 못했습니다 — '
+                        f'템플릿이 바뀌었는지 확인하세요.')
             continue
+        val = fill.value_beside(prs.slides[sn - 1], cap)
         try:
-            fill.set_text(sh, _resolve(fmt, flat), ch, sn, '핵심 수치')
+            if val is not None:
+                fill.set_text(val, _resolve(card['value'], flat), ch, sn, '핵심 수치')
+            if card.get('caption'):
+                fill.set_text(cap, _resolve(card['caption'], flat), ch, sn, '핵심 수치 설명')
         except KeyError as e:
-            warn.append(f'{sn}장 도형 {sid}: {e}')
+            warn.append(f'{sn}장 "{card["anchor"]}": {e}')
 
     if rj:
         try:
@@ -258,8 +289,9 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
     step(5, '검수 중')
     issues = qa.check(out, verbose=False)
     if artwork_note:
-        warn.append('TOP25 표의 기반 분류·도메인·성격·사용 맥락은 마켓 태그를 근거로 한 '
-                    '자동 분류입니다. 사람이 눈으로 본 것과 다를 수 있으니 한 번 훑어봐 주세요.')
+        warn.append('TOP25 표는 실제 스티커 이미지에서 잰 세 줄(콘텐츠 유형·색상 스타일·'
+                    '배경 유형)만 채웠습니다. 나머지 줄은 그림을 눈으로 봐야 아는 값이라 '
+                    '이전 판 그대로입니다.')
 
     return Report(
         out=out, period=per.label, kind=per.kind, slug=per.slug(), rows=rows,
