@@ -203,9 +203,13 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
             if not fill.fill_season_calendar(prs.slides[sn - 1], sn, cards, ch):
                 warn.append(f'{sn}장 시즌 캘린더 카드를 찾지 못했습니다')
             elif mk == 'SOM':
-                warn.append(
-                    f'{sn}장 캘린더의 e스포츠 일정(LCK·롤드컵 등)은 날짜 없이 넣었습니다. '
-                    f'확정 일정이 나오면 season.py의 MARKET_EVENTS에 날짜를 넣어 주세요.')
+                unknown = [f"{c['year']}년 {c['month_num']}월" for c in cards
+                           if not season.has_confirmed_esports(c['year'], c['month_num'])]
+                if unknown:
+                    warn.append(
+                        f'{sn}장 캘린더에서 {" · ".join(unknown)}은 확정된 e스포츠 일정이 없어 '
+                        f'날짜 없이 넣었습니다. 일정이 발표되면 season.py의 ESPORTS_DATES에 '
+                        f'넣어 주세요.')
         except Exception as e:
             warn.append(f'{sn}장 시즌 캘린더: {e}')
 

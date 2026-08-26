@@ -52,6 +52,34 @@ MARKET_EVENTS = {
 }
 
 
+# 확정된 e스포츠 일정. 해마다 날짜가 달라 미리 알 수 없으므로, 발표된 것만 적어 둔다.
+# 여기 없는 해는 위 MARKET_EVENTS의 날짜 없는 문구로 대신하고 경고를 띄운다.
+#
+# 2026 (2026-08 확인):
+#   LCK 서머 결승 9/13 KSPO DOME · 아시안게임(아이치·나고야) e스포츠 9/19~10/4
+#   롤드컵 개막 10/15 · 롤드컵 결승 11/14 뉴욕 바클레이스 센터
+#   SOOP 스트리머 대상은 매년 12월 말(2024년 12/28, 2025년 12/27). 2026년 날짜는 미발표
+# 카드 폭이 좁아 한 줄에 세 항목까지만. 길어지면 두 줄로 넘쳐 카드가 깨진다.
+ESPORTS_DATES = {
+    2026: {
+        9:  ['LCK 결승(9/13)', '추석(9/24~26)', '아시안게임(9/19~)'],
+        10: ['롤드컵 개막(10/15)', '할로윈', '가을 신규 방송'],
+        11: ['롤드컵 결승(11/14)', '수능(11/19)', '빼빼로데이'],
+        12: ['스트리머 대상(12월 말)', '크리스마스', '연말 결산'],
+    },
+}
+
+# 그 달의 e스포츠 일정에 맞춘 추천 주제. 일정이 있는 달은 이쪽이 이긴다.
+ESPORTS_TOPICS = {
+    2026: {
+        9:  ['응원·승리 리액션', '명절 인사', '국대 응원'],
+        10: ['롤드컵 응원', '할로윈 리액션', '첫 방송 인사'],
+        11: ['우승 축하 리액션', '수능 응원', '고백·선물'],
+        12: ['수상 축하·감사', '연말 결산 리액션', '새해 인사'],
+    },
+}
+
+
 # 마켓마다 같은 달을 다른 각도로 쓴다.
 # NOM=블로그에 쓰는 도구 / SOM=방송 리액션 / COM=문자로 보내는 인사
 MARKET_TOPICS = {
@@ -136,9 +164,16 @@ def _holiday_span(day):
     return f'{a.month}/{a.day}~{b.month}/{b.day}'
 
 
+def has_confirmed_esports(year, month):
+    return month in ESPORTS_DATES.get(year, {})
+
+
 def events_for(year, month, market=None):
     """그 달의 이벤트 문구 목록. 날짜가 필요한 것은 실제 날짜를 넣는다."""
-    table = MARKET_EVENTS.get(market, MONTH_EVENTS)
+    if market == 'SOM' and has_confirmed_esports(year, month):
+        table = {month: ESPORTS_DATES[year][month]}
+    else:
+        table = MARKET_EVENTS.get(market, MONTH_EVENTS)
     out = []
     for e in table[month]:
         if e == '{설날}':
@@ -173,13 +208,17 @@ def cards(end_year, end_month, market, count=CARD_COUNT, lead=LEAD_MONTHS):
     for i in range(count):
         idx = (end_month - 1) + lead + i
         y, m = end_year + idx // 12, idx % 12 + 1
+        if market == 'SOM' and m in ESPORTS_TOPICS.get(y, {}):
+            month_topics = ESPORTS_TOPICS[y][m]
+        else:
+            month_topics = topics[m]
         out.append({
             'year': y,
             'month_num': m,
             'month': f'{m}월',
             'register': register_hint(y, m),
             'events': ' · '.join(events_for(y, m, market)),
-            'topics': '→ ' + ' · '.join(topics[m]),
+            'topics': '→ ' + ' · '.join(month_topics),
         })
     return out
 
