@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import ingest, metrics, fill, spec, qa, config, overrides, season
+from . import artwork, attrs
 from . import reject as rj_mod
 
 HERE = Path(__file__).parent
@@ -69,7 +70,7 @@ def _shape_by_id(slide, sid):
 
 
 def build(xlsx_paths, reject_path=None, reject_month=None,
-          template=None, out=None, progress=None):
+          template=None, out=None, progress=None, use_artwork=True):
     """매출 xlsx 3개(+반려 xlsx) → 채워진 pptx. Report를 돌려준다.
 
     progress: 진행 상황을 받을 콜백 fn(단계번호, 전체, 메시지). 웹앱에서 쓴다.
@@ -80,6 +81,7 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
 
     template = Path(template or DEFAULT_TEMPLATE)
     warn = []
+    artwork_note = False
 
     # 1) 데이터
     step(1, '엑셀 읽는 중')
@@ -141,6 +143,29 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
                                 flat[f'{mk}.ctype.anim_{b}_pct'], ch)
         except Exception as e:
             warn.append(f'{sn}장 유형 비율 막대: {e}')
+
+    # TOP25 속성 — 콘텐츠ID로 마켓을 조회해 실제 콘텐츠를 본다
+    if use_artwork:
+        step(3, 'TOP25 콘텐츠 조회 중 (마켓에서 이미지를 받아옵니다)')
+        for c in spec.TOP25:
+            mk, sn = c['market'], c['slide']
+            try:
+                top = metrics.MarketMetrics(mk, dfs[mk]).content.head(25)
+                rev = {str(k): int(v) for k, v in top['매출'].items()}
+                got = artwork.analyze_many(artwork.fetch_many(top.index))
+                miss = 25 - len(got)
+                if miss:
+                    warn.append(f'{sn}장 TOP25 중 {miss}종은 마켓에서 찾지 못했습니다'
+                                f'(비공개·삭제된 콘텐츠일 수 있습니다). 나머지로 계산했습니다.')
+                classified, _ = attrs.classify(got, rev)
+                filled, skipped = fill.fill_top25_table(prs.slides[sn - 1], sn, classified, ch)
+                fill.fill_top25_kpi(prs.slides[sn - 1], sn, attrs.kpi_labels(got, rev), ch)
+                if skipped:
+                    warn.append(f'{sn}장 표의 {" · ".join(skipped)}은(는) 그림을 봐야 아는 값이라 '
+                                f'이전 판 그대로 두었습니다.')
+                artwork_note = True
+            except Exception as e:
+                warn.append(f'{sn}장 TOP25 속성: {e}')
 
     # 시즌 캘린더 — 다음 달들의 명절·기념일. 음력이라 해마다 날짜가 바뀐다.
     end_y, end_m = per.end
@@ -232,6 +257,9 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
     # 5) 검수
     step(5, '검수 중')
     issues = qa.check(out, verbose=False)
+    if artwork_note:
+        warn.append('TOP25 표의 기반 분류·도메인·성격·사용 맥락은 마켓 태그를 근거로 한 '
+                    '자동 분류입니다. 사람이 눈으로 본 것과 다를 수 있으니 한 번 훑어봐 주세요.')
 
     return Report(
         out=out, period=per.label, kind=per.kind, slug=per.slug(), rows=rows,

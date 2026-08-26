@@ -525,3 +525,78 @@ def fill_season_calendar(slide, sn, cards, changes):
                 set_text(t, '', changes, sn, '캘린더 빈 칸')
         set_text(sh, '', changes, sn, '캘린더 빈 칸')
     return n
+
+
+# ------------------------------------------------------------------ TOP25 속성 표 (13·20·27장)
+def fill_top25_table(slide, sn, classified, changes):
+    """속성 표에서 '근거가 있는 줄'만 채운다.
+
+    표는 [속성 | 1위 값 | 매출 비중 | 2위 값 | 매출 비중] 다섯 칸이다.
+    그림을 봐야 아는 줄(텍스트 비중·텍스트 종류·라인 스타일)은 손대지 않는다 —
+    빈 값을 넣거나 짐작해 채우는 것보다 이전 판이 남아 있는 편이 낫다.
+    """
+    tables = [sh.table for sh in slide.shapes if sh.has_table]
+    if not tables:
+        return 0, []
+    tbl = tables[0]
+    filled, skipped = 0, []
+    for row in list(tbl.rows)[1:]:
+        cells = row.cells
+        attr = cells[0].text.strip()
+        vals = classified.get(attr)
+        if not vals:
+            if attr:
+                skipped.append(attr)
+            continue
+        top1 = vals[0]
+        # 값이 한 종류뿐이면 2위 칸에 '0%'를 쓰지 않는다 — 없는 것과 0인 것은 다르다
+        top2 = (vals[1][0], f'{vals[1][1]:g}%') if len(vals) > 1 else ('—', '—')
+        for cell, new in ((cells[1], top1[0]), (cells[2], f'{top1[1]:g}%'),
+                          (cells[3], top2[0]), (cells[4], top2[1])):
+            _set_cell(cell, new, changes, sn, f'TOP25 {attr}')
+        filled += 1
+    return filled, skipped
+
+
+def _set_cell(cell, new, changes, sn, what):
+    """표 칸의 글자만 바꾼다 (칸 서식·정렬은 그대로)."""
+    tf = cell.text_frame
+    before = tf.text
+    paras = tf.paragraphs
+    if paras and paras[0].runs:
+        paras[0].runs[0].text = new
+        for r in paras[0].runs[1:]:
+            r.text = ''
+        for p in paras[1:]:
+            for r in p.runs:
+                r.text = ''
+    else:
+        tf.text = new
+    if before != new:
+        changes.log(sn, what, before, new)
+
+
+# ------------------------------------------------------------------ TOP25 상단 KPI (13·20·27장)
+def fill_top25_kpi(slide, sn, kpi_by_label, changes):
+    """카드 설명줄의 문구를 보고 그 카드에 맞는 값을 넣는다.
+
+    카드 구성이 마켓마다 달라서(정지형/애니메이션/GIF/파스텔) 위치가 아니라
+    설명 문구로 짝을 짓는다. 짝이 없는 카드(텍스트 포함·밈 등)는 건드리지 않는다.
+    """
+    cards = [sh for sh in text_shapes(slide)
+             if re.fullmatch(r'\d+(?:\.\d+)?%', sh.text_frame.text.strip())
+             and 2.2 < _in(sh.top) < 3.2]
+    n = 0
+    for sh in cards:
+        y = _in(sh.top) + _in(sh.height)
+        subs = [t for t in text_shapes(slide)
+                if abs(_in(t.left) - _in(sh.left)) < EPS and 0 <= _in(t.top) - y < 0.15]
+        if not subs:
+            continue
+        label = subs[0].text_frame.text
+        for key, value in kpi_by_label.items():
+            if key in label:
+                set_text(sh, f'{value:g}%', changes, sn, 'TOP25 KPI')
+                n += 1
+                break
+    return n
