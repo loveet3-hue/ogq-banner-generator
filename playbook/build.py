@@ -166,12 +166,6 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
         warn.append(f'{" · ".join(f"{s}장" for s in bar_slides)}의 유형 비율은 글자만 바꿨습니다. '
                     f'막대 길이는 손으로 그려져 있어 건드리지 않았으니 눈으로 맞춰 주세요.')
 
-    # 8·9·10장 제목 — 매출 기준이라 '선호도'가 아니라 '매출 비중'
-    for h in spec.CTYPE_HEADINGS:
-        sh = fill.find_by_text(prs.slides[h['slide'] - 1], h['anchor'])
-        if sh is not None:
-            fill.set_text(sh, h['text'], ch, h['slide'], '유형 비중 제목')
-
     # TOP25 속성 — 콘텐츠ID로 마켓을 조회해 실제 이미지를 본다
     if use_artwork:
         step(3, 'TOP25 콘텐츠 조회 중 (마켓에서 이미지를 받아옵니다)')
@@ -191,6 +185,12 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
                 artwork_note = True
             except Exception as e:
                 warn.append(f'{sn}장 TOP25 속성: {e}')
+
+    # 설명 문구는 손대지 않기로 했으므로, 그 문구가 데이터와 어긋나면 알려만 준다.
+    peak = flat.get('com.month.peak')
+    if peak and peak != 2:
+        warn.append(f'7장 채팅+ 설명이 "설날 시즌(2월)"으로 적혀 있는데 이번 기간의 성수기는 '
+                    f'{peak}월입니다. 숫자만 바꿨으니 문구는 직접 고쳐 주세요.')
 
     # 시즌 캘린더 — 다음 달들의 명절·기념일. 음력이라 해마다 날짜가 바뀐다.
     end_y, end_m = per.end
@@ -227,8 +227,6 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
         try:
             if val is not None:
                 fill.set_text(val, _resolve(card['value'], flat), ch, sn, '핵심 수치')
-            if card.get('caption'):
-                fill.set_text(cap, _resolve(card['caption'], flat), ch, sn, '핵심 수치 설명')
         except KeyError as e:
             warn.append(f'{sn}장 "{card["anchor"]}": {e}')
 

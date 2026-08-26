@@ -72,22 +72,12 @@ MANUAL = {
 #   caption : 설명줄 자체를 바꿀 때만. 없으면 그대로 둔다.
 STAT_CARDS = [
     dict(slide=INSIGHT_SUMMARY, anchor='블로그·포스팅 실용 테마',
-         value='{nom.theme.by_name.블로그/포스팅 실용.pct:g}%',
-         caption='블로그·포스팅 실용 테마 매출 비중\n({period.label} 전체 매출 대비)'),
-    # '정지형 대비'가 아니라 '전체 매출 대비'다. 70.4%는 전체 매출에서 애니가
-    # 차지하는 몫이지 정지형과 견준 배수가 아니다.
+         value='{nom.theme.by_name.블로그/포스팅 실용.pct:g}%'),
     dict(slide=INSIGHT_SUMMARY, anchor='움직이는 이모티콘 선호',
-         value='{som.ctype.anim_BASIS_pct:.0f}%',
-         caption='애니메이션 이모티콘 매출 비중\n({period.label} 전체 매출 대비)'),
-    # 성수기 달이 기간마다 바뀌므로 달 이름을 박지 않는다.
+         value='{som.ctype.anim_BASIS_pct:.0f}%'),
     dict(slide=INSIGHT_SUMMARY, anchor='설날 시즌',
-         value='{com.month.peak_vs_low_x:.1f}배',
-         caption='성수기 {com.month.peak}월 매출\n({period.label} 최저 {com.month.low}월 대비)'),
+         value='{com.month.peak_vs_low_x:.1f}배'),
 ]
-
-# 8·9·10장 '콘텐츠 유형 선호도' 제목 → 매출 기준이므로 '매출 비중'이라고 쓴다
-CTYPE_HEADINGS = [dict(slide=INSIGHT_DETAIL[m], anchor='콘텐츠 유형 선호도',
-                       text='콘텐츠 유형별 매출 비중') for m in ('NOM', 'SOM', 'COM')]
 
 # 덱 전체에서 기간 표기를 갈아 끼운다
 PERIOD_PATTERNS = [

@@ -655,13 +655,22 @@ def fill_ctype_labels(slide, sn, still_pct, anim_pct, changes, min_y=4.5):
         t = sh.text_frame.text
         if not CTYPE_LABEL.search(t):
             continue
-        pairs = []
-        for m in CTYPE_LABEL.finditer(t):
+        # 한 상자에 '정지형 58% ... 애니메이션 42%'가 같이 있을 때, 두 값을 차례로
+        # 갈아 끼우면 방금 써 넣은 숫자를 다음 차례가 다시 집어서 제자리로 돌아온다.
+        # 그래서 한 번에 훑으며 바꾼다.
+        def swap(m):
             new = still_pct if m.group(1) == '정지형' else anim_pct
-            pairs.append((m.group(3), f'{new:.0f}'))
-        try:
-            sub_numbers(sh, pairs, changes, sn, '유형 비율')
+            return f'{m.group(1)}{m.group(2)}{new:.0f}%'
+
+        before = sh.text_frame.text
+        changed_any = False
+        for para in sh.text_frame.paragraphs:
+            for run in para.runs:
+                new_run = CTYPE_LABEL.sub(swap, run.text)
+                if new_run != run.text:
+                    run.text = new_run
+                    changed_any = True
+        if changed_any:
+            changes.log(sn, '유형 비율', before, sh.text_frame.text)
             n += 1
-        except ValueError:
-            continue
     return n
