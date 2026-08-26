@@ -76,7 +76,7 @@ def _run(xlsx_paths, reject_path, reject_month, workdir):
         gc.collect()          # 큰 표를 붙들고 있지 않도록
 
     bar.empty()
-    named = workdir / f'OGQ_{r.year}_{r.half}_플레이북_초안.pptx'
+    named = workdir / f'OGQ_{r.slug}_플레이북_초안.pptx'
     if named.exists():
         named.unlink()
     r.out.rename(named)
@@ -96,7 +96,7 @@ def _report(r):
                        file_name=r.out.name, mime=PPTX_MIME,
                        type='primary', use_container_width=True)
     st.download_button('변경내역 내려받기 (.md)', r.changelog_md().encode('utf-8'),
-                       file_name=f'변경내역_{r.year}_{r.half}.md',
+                       file_name=f'변경내역_{r.slug}.md',
                        mime='text/markdown', use_container_width=True)
 
     if r.changed_slides:

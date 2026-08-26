@@ -19,7 +19,8 @@ streamlit run web_app.py     # 저장소 최상위에서
 
 - 파일명에 NOM / SOM / COM(또는 네이버 / SOOP / 채팅)이 있으면 마켓을 알아서 맞춥니다.
   못 맞히면 화면에서 직접 고르면 됩니다.
-- 상반기·하반기는 데이터 날짜로 판단합니다.
+- **기간은 데이터가 정합니다.** 한 달치를 넣으면 '2026년 3월', 4~6월이면 '2026년 2분기',
+  1~6월이면 '2026년 상반기'로 표지·각주·시즌 캘린더가 알아서 맞춰집니다.
 
 ### 터미널
 
@@ -36,6 +37,7 @@ python3 -m playbook.run \
 ### 확인·시험
 
 ```bash
+python3 -m playbook.test_periods             # 기간 판정 (엑셀 없이 바로)
 python3 -m playbook.test_app <엑셀들>        # 웹앱 경로가 도는지
 python3 -m playbook.test_next_half <엑셀들>  # 다음 반기 시뮬레이션
 python3 playbook/preview.py 결과물.pptx 16 36  # 특정 장을 png로 (맥에서만)

@@ -18,9 +18,9 @@ DEFAULT_TEMPLATE = HERE / 'template_v2.pptx'
 @dataclass
 class Report:
     out: Path                      # 생성된 pptx
-    period: str                    # '2026년 상반기'
-    year: str
-    half: str
+    period: str                    # '2026년 상반기' / '2026년 3분기' / '2026년 9월'
+    kind: str                      # 월 / 분기 / 반기 / 연간 / 구간
+    slug: str                      # 파일 이름 조각
     rows: dict = field(default_factory=dict)        # 마켓별 행 수·기간
     changes: list = field(default_factory=list)     # 바꾼 것 전부
     issues: list = field(default_factory=list)      # 검수 지적
@@ -84,16 +84,27 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
     # 1) 데이터
     step(1, '엑셀 읽는 중')
     dfs = ingest.load_all([str(p) for p in xlsx_paths])
-    year, half, period = ingest.period_label(dfs)
+    per = ingest.period_label(dfs)
     rows = {m: dict(n=len(d), lo=d['일시'].min().date(), hi=d['일시'].max().date())
             for m, d in dfs.items()}
 
     # 2) 지표
     step(2, '지표 계산 중')
     flat, _ = metrics.compute(dfs)
-    nyear, nhalf = (year, '하반기') if half == '상반기' else (str(int(year) + 1), '상반기')
-    flat.update({'period.year': year, 'period.half': half, 'period.label': period,
-                 'period.next_year': nyear, 'period.next_half': nhalf})
+    flat.update({'period.year': per.year, 'period.half': per.sub, 'period.sub': per.sub,
+                 'period.label': per.label, 'period.short': per.short,
+                 'period.kind': per.kind, 'period.next': per.next_label,
+                 'period.months': per.n})
+
+    # 기간이 짧으면 월별 추이·시즌성 수치는 뜻이 없다. 조용히 넘어가면 안 된다.
+    if per.n < 3:
+        warn.append(
+            f'데이터가 {per.n}개월치({per.label})뿐입니다. 월별 추이와 시즌성 수치'
+            f'(성수기 배수 등)는 뜻이 없으니 해당 슬라이드는 직접 확인하세요.')
+    if per.kind == '구간':
+        warn.append(
+            f'월·분기·반기 어디에도 딱 맞지 않는 기간입니다({per.label}). '
+            f'표지와 각주에 이 문구가 그대로 들어갑니다.')
 
     rj, month = None, ''
     if reject_path:
@@ -174,9 +185,13 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
             if not sh.has_text_frame:
                 continue
             t = sh.text_frame.text
-            y, h = (nyear, nhalf) if '시즌 캘린더' in t else (year, half)
-            new = re.sub(r'\d{4}년\s*(?:상반기|하반기)', f'{y}년 {h}', t)
-            new = re.sub(r'(?<!\d)\d{4}\s+(?:상반기|하반기)', f'{y} {h}', new)
+            # 템플릿(v2)에는 '2026년 상반기'로 적혀 있다. 항상 원본 템플릿에서
+            # 시작하므로, 그 자리를 이번 기간 표기로 갈아 끼우면 된다.
+            nxt = '시즌 캘린더' in t
+            full = per.next_label if nxt else per.label
+            short = per.next_short if nxt else per.short
+            new = re.sub(r'\d{4}년\s*(?:상반기|하반기)', full, t)
+            new = re.sub(r'(?<!\d)\d{4}\s+(?:상반기|하반기)', short, new)
             if new != t:
                 fill.set_text(sh, new, ch, si, '기간 표기')
 
@@ -192,7 +207,7 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
 
     # 4) 저장
     step(4, '파일 저장 중')
-    out = Path(out) if out else HERE / f'OGQ_{year}_{half}_플레이북_초안.pptx'
+    out = Path(out) if out else HERE / f'OGQ_{per.slug()}_플레이북_초안.pptx'
     out.parent.mkdir(parents=True, exist_ok=True)
     prs.save(out)
 
@@ -201,7 +216,7 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
     issues = qa.check(out, verbose=False)
 
     return Report(
-        out=out, period=period, year=year, half=half, rows=rows,
+        out=out, period=per.label, kind=per.kind, slug=per.slug(), rows=rows,
         changes=list(ch), issues=issues, warnings=warn,
         manual={k: dict(slides=sorted(set(v['slides'])), what=v['what'])
                 for k, v in spec.MANUAL.items()},

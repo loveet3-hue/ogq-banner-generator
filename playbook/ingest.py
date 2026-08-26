@@ -113,21 +113,83 @@ def load_all(paths):
     return out
 
 
+class Period:
+    """데이터가 실제로 덮는 기간. 표지·각주에 뭐라고 쓸지가 여기서 정해진다."""
+
+    def __init__(self, months):
+        # months: 정렬된 (연, 월) 목록
+        self.months = months
+        self.start, self.end = months[0], months[-1]
+        self.n = len(months)
+        self.year = str(self.start[0])
+        self.kind, self.sub = self._classify()
+        if not self.sub:
+            self.label = self.short = f'{self.year}년'
+        elif self.sub.startswith(self.year):
+            # 해를 넘기는 구간은 sub에 이미 연도가 들어 있다 ('2026년 11월~2027년 1월')
+            self.label = self.short = self.sub
+        else:
+            self.label = f'{self.year}년 {self.sub}'
+            self.short = f'{self.year} {self.sub}'
+
+    def _classify(self):
+        (y0, m0), (y1, m1) = self.start, self.end
+        expected = [(y0 + (m0 - 1 + i) // 12, (m0 - 1 + i) % 12 + 1) for i in range(self.n)]
+        gapless = expected == self.months
+
+        if y0 != y1:
+            return '구간', f'{y0}년 {m0}월~{y1}년 {m1}월'
+        if self.n == 1:
+            return '월', f'{m0}월'
+        if gapless and self.n == 3 and m0 in (1, 4, 7, 10):
+            return '분기', f'{(m0 - 1) // 3 + 1}분기'
+        if gapless and self.n == 6 and m0 in (1, 7):
+            return '반기', '상반기' if m0 == 1 else '하반기'
+        if gapless and self.n == 12 and m0 == 1:
+            return '연간', ''
+        return '구간', f'{m0}~{m1}월' if gapless else f'{m0}월·{m1}월 등 {self.n}개월'
+
+    @property
+    def next_label(self):
+        """시즌 캘린더가 가리켜야 할 '다음 기간'."""
+        y, m = self.end
+        if self.kind == '월':
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+            return f'{y}년 {m}월'
+        if self.kind == '분기':
+            q = (self.start[1] - 1) // 3 + 1
+            y, q = (y + 1, 1) if q == 4 else (y, q + 1)
+            return f'{y}년 {q}분기'
+        if self.kind == '반기':
+            return (f'{y}년 하반기' if self.sub == '상반기'
+                    else f'{y + 1}년 상반기')
+        if self.kind == '연간':
+            return f'{y + 1}년'
+        return f'{self.label} 이후'
+
+    @property
+    def next_short(self):
+        return self.next_label.replace('년 ', ' ', 1)
+
+    def slug(self):
+        """파일 이름에 쓸 조각."""
+        sub = self.sub.replace('~', '-').replace('·', '-').replace(' ', '')
+        return f'{self.year}_{sub}'.rstrip('_')
+
+    def __str__(self):
+        return self.label
+
+
 def period_label(dfs):
-    """데이터에서 기간을 자동 추론 → ('2026', '상반기', '2026년 상반기')"""
-    lo = min(d['일시'].min() for d in dfs.values())
-    hi = max(d['일시'].max() for d in dfs.values())
-    if lo.year != hi.year:
-        raise IngestError(f'데이터가 두 해에 걸쳐 있습니다: {lo.date()} ~ {hi.date()}')
-    half = '상반기' if hi.month <= 6 else '하반기'
-    if lo.month <= 6 <= hi.month and hi.month > 6:
-        raise IngestError(f'데이터가 상·하반기에 걸쳐 있습니다: {lo.date()} ~ {hi.date()}')
-    return str(lo.year), half, f'{lo.year}년 {half}'
+    """데이터가 덮는 기간을 알아낸다.
 
-
-if __name__ == '__main__':
-    dfs = load_all(sys.argv[1:])
-    for m, d in dfs.items():
-        print(f'{m}: {len(d):,}행  {d["일시"].min().date()} ~ {d["일시"].max().date()}  '
-              f'매출 {d["판매금액"].sum():,}원')
-    print('기간:', period_label(dfs)[2])
+    한 달치를 넣으면 '2026년 3월', 3~6월이면 '2026년 3~6월'처럼 실제 기간으로 쓴다.
+    예전에는 무조건 상/하반기로 적어서, 3월 한 달치를 넣어도 표지에
+    '2026년 상반기'라고 박히는 문제가 있었다.
+    """
+    got = set()
+    for d in dfs.values():
+        got |= set(zip(d['일시'].dt.year, d['일시'].dt.month))
+    if not got:
+        raise IngestError('데이터에 날짜가 없습니다.')
+    return Period(sorted(got))

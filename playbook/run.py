@@ -35,7 +35,7 @@ def main():
     print()
     for m, v in r.rows.items():
         print(f'    {m}  {v["n"]:,}행  {v["lo"]} ~ {v["hi"]}')
-    print(f'    기간 판정: {r.period} · 지표 {r.metric_count}개')
+    print(f'    기간 판정: {r.period} ({r.kind}) · 지표 {r.metric_count}개')
     if r.reject_month:
         print(f'    반려 데이터 {r.reject_month} · {r.reject_total:,}건 · '
               f'미분류 {r.reject_other_pct}%')
