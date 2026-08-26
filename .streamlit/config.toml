@@ -2,4 +2,4 @@
 base = "light"
 primaryColor = "#FF7A59"
 [server]
-maxUploadSize = 50
+maxUploadSize = 200

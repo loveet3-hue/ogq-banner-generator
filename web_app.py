@@ -2,6 +2,7 @@
 """
 OGQ 콘텐츠 생성기 — 웹 버전 (Streamlit)
 탭1: 배너 생성기 (banner_gen)  /  탭2: 인터뷰 카드뉴스 (cardnews/make_cards)
+탭3: 플레이북 만들기 (playbook)
 실행:  streamlit run web_app.py
 """
 import contextlib
@@ -37,7 +38,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🎨 OGQ 콘텐츠 생성기")
-tab_banner, tab_card = st.tabs(["🖼 배너 생성기", "📰 인터뷰 카드뉴스"])
+tab_banner, tab_card, tab_playbook = st.tabs(
+    ["🖼 배너 생성기", "📰 인터뷰 카드뉴스", "📊 플레이북 만들기"])
 
 
 # =========================================================================
@@ -310,3 +312,12 @@ with tab_card:
                         if os.path.exists(tp):
                             st.text_area(label, open(tp, encoding="utf-8").read(), height=160,
                                          key=f"{name}_{txt}")
+
+
+# =========================================================================
+# 탭 3: 플레이북 만들기
+# =========================================================================
+with tab_playbook:
+    # playbook은 pandas/python-pptx를 끌어오므로 탭을 열 때만 불러온다
+    from playbook import tab as playbook_tab  # noqa: E402
+    playbook_tab.render()

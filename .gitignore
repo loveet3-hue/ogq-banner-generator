@@ -6,3 +6,9 @@ build/icon.iconset/
 .DS_Store
 build/backup_*.py
 cardnews/output/
+playbook/__pycache__/
+playbook/preview/
+playbook/변경내역.md
+playbook/OGQ_*_플레이북_초안.pptx
+playbook/_test_*.pptx
+.streamlit/secrets.toml

@@ -6,3 +6,7 @@ openpyxl
 jinja2
 pyyaml
 playwright
+python-pptx>=0.6.23
+numpy>=1.24
+google-auth>=2.20
+google-api-python-client>=2.100
