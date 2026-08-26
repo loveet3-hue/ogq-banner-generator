@@ -97,6 +97,7 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
     template = Path(template or DEFAULT_TEMPLATE)
     warn = []
     artwork_note = False
+    dropped_rows = {}
 
     # 1) 데이터
     step(1, '엑셀 읽는 중')
@@ -151,20 +152,17 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
 
     # 정지형/애니 비율 — 글자만 바꾼다. 막대 길이는 손으로 다듬어져 있어 건드리지 않는다.
     b = config.CTYPE_BASIS
-    bar_slides = []
     for c in spec.CTYPE_BARS:
         mk, sn = c['market'].lower(), c['slide']
+        still = flat[f'{mk}.ctype.still_{b}_pct']
+        anim = flat[f'{mk}.ctype.anim_{b}_pct']
         try:
-            n = fill.fill_ctype_labels(prs.slides[sn - 1], sn,
-                                       flat[f'{mk}.ctype.still_{b}_pct'],
-                                       flat[f'{mk}.ctype.anim_{b}_pct'], ch)
-            if n:
-                bar_slides.append(sn)
+            fill.fill_ctype_labels(prs.slides[sn - 1], sn, still, anim, ch)
+            if not fill.fill_ctype_bar(prs.slides[sn - 1], sn, still, anim, ch):
+                warn.append(f'{sn}장 유형 비율 막대를 찾지 못했습니다 — 글자만 바꿨으니 '
+                            f'막대 길이는 눈으로 맞춰 주세요.')
         except Exception as e:
             warn.append(f'{sn}장 유형 비율: {e}')
-    if bar_slides:
-        warn.append(f'{" · ".join(f"{s}장" for s in bar_slides)}의 유형 비율은 글자만 바꿨습니다. '
-                    f'막대 길이는 손으로 그려져 있어 건드리지 않았으니 눈으로 맞춰 주세요.')
 
     # TOP25 속성 — 콘텐츠ID로 마켓을 조회해 실제 이미지를 본다
     if use_artwork:
@@ -180,8 +178,11 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
                     warn.append(f'{sn}장 TOP25 중 {miss}종은 마켓에서 찾지 못했습니다'
                                 f'(비공개·삭제된 콘텐츠일 수 있습니다). 나머지로 계산했습니다.')
                 classified, _ = attrs.classify(got, rev)
-                fill.fill_top25_table(prs.slides[sn - 1], sn, classified, ch)
-                fill.fill_top25_kpi(prs.slides[sn - 1], sn, attrs.kpi_labels(got, rev), ch)
+                _, dropped = fill.fill_top25_table(prs.slides[sn - 1], sn, classified, ch)
+                if dropped:
+                    dropped_rows[sn] = dropped
+                fill.fill_top25_kpi(prs.slides[sn - 1], sn,
+                                    lambda lab: attrs.kpi_value(lab, got, rev), ch)
                 artwork_note = True
             except Exception as e:
                 warn.append(f'{sn}장 TOP25 속성: {e}')
@@ -290,10 +291,12 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
     # 5) 검수
     step(5, '검수 중')
     issues = qa.check(out, verbose=False)
-    if artwork_note:
-        warn.append('TOP25 표는 실제 스티커 이미지에서 잰 세 줄(콘텐츠 유형·색상 스타일·'
-                    '배경 유형)만 채웠습니다. 나머지 줄은 그림을 눈으로 봐야 아는 값이라 '
-                    '이전 판 그대로입니다.')
+    if dropped_rows:
+        names = sorted({r for v in dropped_rows.values() for r in v})
+        slides = ' · '.join(f'{n}장' for n in sorted(dropped_rows))
+        warn.append(f'{slides} TOP25 표에서 {" · ".join(names)} 줄을 뺐습니다. '
+                    f'그림을 눈으로 봐야 아는 값이라 데이터로 확인할 수 없어, 지난 판 값을 '
+                    f'그대로 두는 대신 지웠습니다.')
 
     return Report(
         out=out, period=per.label, kind=per.kind, slug=per.slug(), rows=rows,

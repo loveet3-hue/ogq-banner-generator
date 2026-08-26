@@ -435,56 +435,243 @@ def _card_categories(slide, badge, rj):
     return found
 
 
-# ------------------------------------------------------------------ 정지형/애니 비율 막대 (8·9·10장)
-def fill_ctype_bar(slide, sn, still_pct, anim_pct, changes, row_y=5.40, row_h=0.38):
-    """가로로 둘로 나뉜 띠. 폭이 곧 비중이라 글자만 바꾸면 그림이 거짓말을 한다.
+# ------------------------------------------------------------------ 정지형/애니 비율 막대
+# 브랜드 색으로 어느 칸이 무엇인지 가린다 (Vol.1 디자인 토큰)
+STILL_COLOR = '38761D'   # 진한 초록 = 정지형
+ANIM_COLOR = 'E69138'    # 주황 = 애니메이션
 
-    한 칸은 막대 도형과 그 위에 겹쳐 놓은 글자 도형이 같은 자리에 포개져 있고,
-    두 번째 칸은 글자가 없을 수도 있다(작아서 안 넣은 경우).
+
+def _fill_hex(shape):
+    try:
+        return str(shape.fill.fore_color.rgb).upper()
+    except Exception:
+        return None
+
+
+def fill_ctype_bar(slide, sn, still_pct, anim_pct, changes, band=(5.30, 5.60)):
+    """가로 띠를 값에 맞춰 다시 그린다.
+
+    템플릿의 띠는 손으로 그려져 같은 색 사각형이 여러 장 겹쳐 있다(슬라이드마다 2~3장).
+    그대로 두면 글자만 42%로 바뀌고 띠는 58% 길이라 그림이 값과 어긋난다.
+    그래서 색으로 정지형/애니를 가려낸 뒤, 각 색 하나만 남기고 길이를 다시 잡는다.
+    겹쳐 있던 나머지는 지운다 — 의도된 디자인이 아니라 편집하다 남은 사본이다.
     """
-    row = [sh for sh in slide.shapes
-           if abs(_in(sh.top) - row_y) < EPS and abs(_in(sh.height) - row_h) < EPS]
-    if len(row) < 2:
-        raise ValueError(f'slide {sn}: 유형 비율 막대를 찾지 못했습니다')
+    lo, hi = band
+    bars = [sh for sh in slide.shapes
+            if lo <= _in(sh.top) <= hi and _in(sh.width) > 0.05
+            and not (sh.has_text_frame and sh.text_frame.text.strip())
+            and _fill_hex(sh) in (STILL_COLOR, ANIM_COLOR)]
+    if not bars:
+        return False
+    still = [b for b in bars if _fill_hex(b) == STILL_COLOR]
+    anim = [b for b in bars if _fill_hex(b) == ANIM_COLOR]
+    if not still or not anim:
+        return False
 
-    lefts = sorted({round(_in(sh.left), 2) for sh in row})
-    if len(lefts) != 2:
-        raise ValueError(f'slide {sn}: 막대 칸이 2개가 아닙니다({len(lefts)}개)')
-    x0 = lefts[0]
-    g1 = [sh for sh in row if abs(_in(sh.left) - lefts[0]) < EPS]
-    g2 = [sh for sh in row if abs(_in(sh.left) - lefts[1]) < EPS]
-    total = max(_in(sh.left) + _in(sh.width) for sh in row) - x0
+    x0 = min(_in(b.left) for b in bars)
+    x1 = max(_in(b.left) + _in(b.width) for b in bars)
+    track = x1 - x0
+    if track <= 0:
+        return False
 
-    def label_of(group):
-        for sh in group:
-            if sh.has_text_frame and sh.text_frame.text.strip():
-                return sh.text_frame.text.strip()
-        return ''
+    keep_s, keep_a = still[0], anim[0]
+    w_s = track * max(still_pct, 0) / 100
+    before = f'정지형 {round(_in(keep_s.width), 2)}″ / 애니 {round(_in(keep_a.width), 2)}″'
+    keep_s.left, keep_s.width = Emu(int(Inches(x0))), Inches(w_s)
+    keep_a.left = Emu(int(Inches(x0 + w_s)))
+    keep_a.width = Inches(max(track - w_s, 0))
+    for extra in still[1:] + anim[1:]:
+        extra._element.getparent().remove(extra._element)
+    changes.log(sn, '유형 비율 막대', before,
+                f'정지형 {round(w_s, 2)}″ / 애니 {round(track - w_s, 2)}″'
+                f' (겹친 사본 {len(still) + len(anim) - 2}장 정리)')
+    return True
 
-    first = label_of(g1)
-    lead_anim = '애니' in first
-    p1, p2 = (anim_pct, still_pct) if lead_anim else (still_pct, anim_pct)
-    n1, n2 = ('애니메이션', '정지형') if lead_anim else ('정지형', '애니메이션')
 
-    w1 = Inches(total * p1 / 100)
-    w2 = Inches(total * p2 / 100)
-    x2 = Emu(int(Inches(x0) + w1))
-    for sh in g1:
-        sh.width = w1
-    for sh in g2:
-        sh.left, sh.width = x2, w2
-    changes.log(sn, f'{n1} 비율 막대', round(_in(g1[0].width) if g1 else 0, 3),
-                round(total * p1 / 100, 3))
+# ------------------------------------------------------------------ 반려 현황(36장)
+def _hbar_axis(slide):
+    """가로 막대들이 공통으로 시작하는 x. 좌표를 박아 두면 템플릿을 조금만
+    옮겨도(2.45 → 2.40) 통째로 못 찾는다."""
+    groups = {}
+    for sh in blank_shapes(slide):
+        if 0 < _in(sh.height) < 0.3 and _in(sh.width) > 0:
+            groups.setdefault(round(_in(sh.left), 2), []).append(sh)
+    if not groups:
+        return None
+    x, items = max(groups.items(), key=lambda kv: len(kv[1]))
+    return x if len(items) >= 3 else None
 
-    # 글자: 원래 '정지형 94%'처럼 유형명이 붙어 있으면 유지, 아니면 숫자만
-    for group, name, pct in ((g1, n1, p1), (g2, n2, p2)):
-        for sh in group:
-            if not (sh.has_text_frame and sh.text_frame.text.strip()):
-                continue
-            old = sh.text_frame.text.strip()
-            new = f'{name} {pct:.0f}%' if re.search(r'정지형|애니', old) else f'{pct:.0f}%'
-            set_text(sh, new, changes, sn, '유형 비율')
-    return {n1: p1, n2: p2}
+
+def _hbar_rows(slide, x_axis=None, name_x=0.9):
+    """가로 막대 행 묶음: [(이름도형, 막대도형, 값도형)] — 위에서 아래 순."""
+    if x_axis is None:
+        x_axis = _hbar_axis(slide)
+    if x_axis is None:
+        return []
+    rows = []
+    bars = [sh for sh in blank_shapes(slide)
+            if abs(_in(sh.left) - x_axis) < EPS and 0 < _in(sh.height) < 0.3]
+    for bar in sorted(bars, key=lambda s: _in(s.top)):
+        y = _in(bar.top)
+        names = [sh for sh in text_shapes(slide)
+                 if abs(_in(sh.top) - y) < EPS and _in(sh.left) < x_axis - 0.05]
+        vals = [sh for sh in text_shapes(slide)
+                if abs(_in(sh.top) - y) < EPS and _in(sh.left) > x_axis
+                and re.fullmatch(r'\d+(?:\.\d+)?', sh.text_frame.text.strip())]
+        if names and vals:
+            rows.append((names[0], bar, vals[0]))
+    return rows
+
+
+def fill_reject_status(slide, sn, rj, month, changes, sentences=None, tails=None,
+                       headline=None):
+    """반려 사유 비중 가로 막대 + 상단 KPI 카드 + 머리말/각주."""
+    cats = rj['reject.categories']
+    total = rj['reject.total']
+
+    # 1) 가로 막대
+    rows = _hbar_rows(slide)
+    if not rows:
+        raise ValueError(f'slide {sn}: 반려 막대 행을 찾지 못했습니다')
+    k = max(_in(b.width) for _, b, _ in rows) / max(c['pct'] for c in cats[:len(rows)])
+    for (name_sh, bar, val_sh), c in zip(rows, cats):
+        set_text(name_sh, c['name'], changes, sn, '반려 사유명')
+        before = round(_in(bar.width), 3)
+        bar.width = Inches(c['pct'] * k)
+        changes.log(sn, '반려 막대', before, round(_in(bar.width), 3))
+        val_sh.left = Emu(int(bar.left + bar.width + Inches(0.04)))
+        set_text(val_sh, f'{c["pct"]:.1f}', changes, sn, '반려 비중')
+
+    # 2) 상단 KPI 카드 4장 (같은 y에 나란한 '..%' 텍스트)
+    cards = [sh for sh in text_shapes(slide)
+             if re.fullmatch(r'\d+(?:\.\d+)?%', sh.text_frame.text.strip())]
+    cards.sort(key=lambda s: _in(s.left))
+    for sh, c in zip(cards, cats):
+        set_text(sh, f'{c["pct"]:g}%', changes, sn, '반려 KPI')
+        # 카드 설명줄 = 바로 아래 텍스트
+        y = _in(sh.top) + _in(sh.height)
+        subs = [t for t in text_shapes(slide)
+                if abs(_in(t.left) - _in(sh.left)) < EPS and 0 <= _in(t.top) - y < 0.1]
+        if subs:
+            tail = (tails or {}).get(c['name'])
+            if tail:
+                set_text(subs[0], f'{c["name"]} — {tail}', changes, sn, '반려 카드 설명')
+            else:
+                # 설명 문구가 없으면 이름만 갈고 옛 설명은 지운다 —
+                # 다른 사유의 설명이 남아 있는 것보다 없는 게 낫다
+                set_text(subs[0], c['name'], changes, sn, '반려 카드 설명(문구 없음)')
+
+    # 3) 머리말 · 각주
+    for sh in text_shapes(slide):
+        t = sh.text_frame.text
+        if t.startswith('반려의') and '%' in t:
+            if headline:
+                set_text(sh, headline, changes, sn, '반려 머리말')
+            else:
+                old = NUMRE.search(t).group()
+                sub_numbers(sh, [(old, f'{cats[0]["pct"]:g}')], changes, sn, '반려 머리말')
+        elif '규격성' in t and '%' in t:
+            # 하단 띠: '규격성 사유만 챙겨도 반려의 약 N%' — 여기 N은 1위 사유가 아니라
+            # 규격성 사유 합계다. 머리말과 헷갈리면 62.5%가 잘못 들어간다.
+            old = re.search(r'약\s*([\d.]+)\s*%', t)
+            if old:
+                sub_numbers(sh, [(old.group(1), f'{rj["reject.spec_pct"]:g}')],
+                            changes, sn, '반려 하단 띠')
+        if '기준' in t and '건' in t:
+            y, mm = month.split('-')
+            new = re.sub(r'\d{4}년\s*\d{1,2}월', f'{y}년 {int(mm)}월', t)
+            new = re.sub(r'[\d,]+건', f'{total:,}건', new, count=1)
+            new = re.sub(r'\d+개 항목', f'{len(cats)}개 항목', new)
+            if new != t:
+                set_text(sh, new, changes, sn, '반려 각주')
+
+    # 4) TOP3 상세 카드 — 제목과 본문을 위에서부터 순서대로
+    titles = sorted([sh for sh in text_shapes(slide)
+                     if re.fullmatch(r'.+\s\([\d,]+건\)', sh.text_frame.text.strip())],
+                    key=lambda s: _in(s.top))
+    for i, title in enumerate(titles, 1):
+        name = rj.get(f'reject.top{i}.name')
+        cnt = rj.get(f'reject.top{i}.count')
+        if not name:
+            continue
+        set_text(title, f'{name} ({cnt:,}건)', changes, sn, f'반려 TOP{i} 제목')
+        body = _card_body(slide, title)
+        text = (sentences or {}).get(name)
+        if body is not None and text:
+            set_text(body, text, changes, sn, f'반려 TOP{i} 본문')
+        elif body is not None:
+            changes.log(sn, f'반려 TOP{i} 본문 미작성',
+                        body.text_frame.text[:40],
+                        f'(overrides.CARD_SENTENCES에 "{name}" 문장이 없습니다)')
+    return len(rows)
+
+
+def _card_body(slide, title):
+    """카드 제목 바로 아래, 같은 x에서 시작하는 설명 텍스트."""
+    tx, ty = _in(title.left), _in(title.top) + _in(title.height)
+    cands = [sh for sh in text_shapes(slide)
+             if sh is not title and abs(_in(sh.left) - tx) < 0.1
+             and 0 <= _in(sh.top) - ty < 0.4]
+    return min(cands, key=lambda s: _in(s.top)) if cands else None
+
+
+def fill_reject_action(slide, sn, rj, changes):
+    """'반려 10.5%' 형태의 배지를 새 비중으로 갱신.
+
+    배지는 카드 오른쪽 끝에 있고, 그 카드의 제목은 같은 높이의 바로 왼쪽 텍스트다.
+    제목이 '권리 · AI 표기'처럼 두 사유를 묶고 있으면 두 비중을 더한다.
+    """
+    n = 0
+    for sh in list(text_shapes(slide)):
+        if not re.fullmatch(r'반려\s*[\d.]+%', sh.text_frame.text.strip()):
+            continue
+        cats = _card_categories(slide, sh, rj)
+        if not cats:
+            continue
+        pct = round(sum(c['pct'] for c in cats), 1)
+        set_text(sh, f'반려 {pct:g}%', changes, sn, '반려 대응 배지')
+        n += 1
+    return n
+
+
+# 카드 제목에 쓰인 말 → 반려 카테고리
+_ACTION_ALIAS = {
+    '다크모드': '다크모드 대응',
+    '가독성': '텍스트 가독성',
+    '투명화': '투명 배경(PNG)',
+    '투명 배경': '투명 배경(PNG)',
+    '중복': '중복 콘텐츠',
+    '권리': '저작권·권리 침해',
+    'AI': 'AI 사용 의심',
+    '화질': '사진·화질',
+    '크기': '크기·정렬 통일',
+    '정렬': '크기·정렬 통일',
+}
+
+
+def _card_title(slide, badge):
+    """배지와 같은 높이에서 바로 왼쪽에 있는 텍스트 = 그 카드의 제목."""
+    by, bx = _in(badge.top), _in(badge.left)
+    cands = [sh for sh in text_shapes(slide)
+             if sh is not badge and abs(_in(sh.top) - by) < 0.12
+             and _in(sh.left) < bx]
+    if not cands:
+        return None
+    return max(cands, key=lambda s: _in(s.left))
+
+
+def _card_categories(slide, badge, rj):
+    title = _card_title(slide, badge)
+    if title is None:
+        return []
+    t = title.text_frame.text
+    lookup = {c['name']: c for c in rj['reject.categories']}
+    found, seen = [], set()
+    for word, cat in _ACTION_ALIAS.items():
+        if word in t and cat in lookup and cat not in seen:
+            seen.add(cat)
+            found.append(lookup[cat])
+    return found
 
 
 # ------------------------------------------------------------------ 시즌 캘린더 (16·23·30장)
@@ -552,18 +739,23 @@ def fill_top25_table(slide, sn, classified, changes):
     그림을 봐야 아는 줄(텍스트 비중·텍스트 종류·라인 스타일)은 손대지 않는다 —
     빈 값을 넣거나 짐작해 채우는 것보다 이전 판이 남아 있는 편이 낫다.
     """
-    tables = [sh.table for sh in slide.shapes if sh.has_table]
-    if not tables:
+    frames = [sh for sh in slide.shapes if sh.has_table]
+    if not frames:
         return 0, []
-    tbl = tables[0]
+    frame = frames[0]
+    tbl = frame.table
+    row_h = [r.height for r in tbl.rows]        # 지우기 전 행 높이
     filled, skipped = 0, []
     for row in list(tbl.rows)[1:]:
         cells = row.cells
         attr = cells[0].text.strip()
         vals = classified.get(attr)
         if not vals:
+            # 근거가 없는 줄은 지운다. 옛 값을 그대로 두면 다른 줄은 새 데이터인데
+            # 이 줄만 지난 판 값이라, 한 표 안에서 기준이 섞인다.
             if attr:
                 skipped.append(attr)
+                row._tr.getparent().remove(row._tr)
             continue
         top1 = vals[0]
         # 값이 한 종류뿐이면 2위 칸에 '0%'를 쓰지 않는다 — 없는 것과 0인 것은 다르다
@@ -572,6 +764,14 @@ def fill_top25_table(slide, sn, classified, changes):
                           (cells[3], top2[0]), (cells[4], top2[1])):
             _set_cell(cell, new, changes, sn, f'TOP25 {attr}')
         filled += 1
+
+    # 행을 지우면 남은 행이 원래 표 높이를 채우려고 늘어난다. 높이를 다시 잡아 준다.
+    if skipped:
+        keep = list(tbl.rows)
+        unit = row_h[1] if len(row_h) > 1 else row_h[0]
+        for i, r in enumerate(keep):
+            r.height = row_h[0] if i == 0 else unit
+        frame.height = sum(r.height for r in keep)
     return filled, skipped
 
 
@@ -594,7 +794,7 @@ def _set_cell(cell, new, changes, sn, what):
 
 
 # ------------------------------------------------------------------ TOP25 상단 KPI (13·20·27장)
-def fill_top25_kpi(slide, sn, kpi_by_label, changes):
+def fill_top25_kpi(slide, sn, value_of, changes):
     """카드 설명줄의 문구를 보고 그 카드에 맞는 값을 넣는다.
 
     카드 구성이 마켓마다 달라서(정지형/애니메이션/GIF/파스텔) 위치가 아니라
@@ -610,12 +810,10 @@ def fill_top25_kpi(slide, sn, kpi_by_label, changes):
                 if abs(_in(t.left) - _in(sh.left)) < EPS and 0 <= _in(t.top) - y < 0.15]
         if not subs:
             continue
-        label = subs[0].text_frame.text
-        for key, value in kpi_by_label.items():
-            if key in label:
-                set_text(sh, f'{value:g}%', changes, sn, 'TOP25 KPI')
-                n += 1
-                break
+        value = value_of(subs[0].text_frame.text)
+        if value is not None:
+            set_text(sh, f'{value:g}%', changes, sn, 'TOP25 KPI')
+            n += 1
     return n
 
 

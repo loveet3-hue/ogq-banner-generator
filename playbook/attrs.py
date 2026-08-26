@@ -114,15 +114,26 @@ def type_count_share(analyzed, label):
     return round(hit / len(got) * 100, 1)
 
 
-def kpi_labels(analyzed, revenue):
-    """카드 설명 문구 → 값. 문구에 이 조각이 들어 있으면 그 값을 쓴다."""
-    return {
-        '정지형 스티커(이모티콘) 매출 비중': type_share(analyzed, revenue, '정지형'),
-        '애니메이션 스티커 매출 비중': type_share(analyzed, revenue, '애니메이션'),
-        '움직이는(GIF) 이모티콘 비중': type_count_share(analyzed, '애니메이션'),
-        '시리즈(넘버링) 콘텐츠 매출': series_share(analyzed, revenue),
-        '파스텔 톤 매출 비중': style_share(analyzed, revenue, '파스텔'),
-    }
+# 카드 설명 문구는 판마다 조금씩 달라진다('애니메이션 스티커 매출 비중' →
+# '움직이는 이모티콘 매출 비중'). 통째로 비교하면 그때마다 빗나가므로,
+# 반드시 들어가야 할 조각(all)과 들어가면 안 되는 조각(none)으로 가린다.
+KPI_RULES = [
+    # (필수 조각들, 금지 조각들, 값 만드는 함수)
+    (['정지형', '매출'], [], lambda a, r: type_share(a, r, '정지형')),
+    (['콘텐츠 수'], [], lambda a, r: type_count_share(a, '애니메이션')),
+    (['시리즈'], [], lambda a, r: series_share(a, r)),
+    (['파스텔'], [], lambda a, r: style_share(a, r, '파스텔')),
+    (['매출'], ['텍스트', '밈', '표준어', '정지형'],
+     lambda a, r: type_share(a, r, '애니메이션')),
+]
+
+
+def kpi_value(label, analyzed, revenue):
+    """카드 설명 문구 → 값. 짝이 없으면 None (그 카드는 손대지 않는다)."""
+    for need, avoid, fn in KPI_RULES:
+        if all(w in label for w in need) and not any(w in label for w in avoid):
+            return fn(analyzed, revenue)
+    return None
 
 
 def type_share(analyzed, revenue, label):
