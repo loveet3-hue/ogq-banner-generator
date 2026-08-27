@@ -48,25 +48,50 @@ def _pct(part, whole, nd=1):
 
 
 class MarketMetrics:
-    """마켓 1개에 대한 모든 파생 수치."""
+    """마켓 1개에 대한 모든 파생 수치.
 
-    def __init__(self, key, df):
+    덱 전체가 한 잣대를 쓴다(config.BASIS). '판매 건수'면 한 건을 1로 세고,
+    '매출액'이면 결제 금액으로 무게를 준다. 잣대가 슬라이드마다 다르면
+    같은 '애니 비중'인데 답이 달라지고, 채팅+처럼 우위가 뒤집히기까지 한다.
+    """
+
+    def __init__(self, key, df, basis=None):
+        from . import config
         self.key = key
         self.df = df
         self.pos = df[df['판매금액'] > 0]
+        self.basis = basis or config.BASIS
         self._content = None
+
+    @property
+    def _w(self):
+        """무게 열 이름. 건수 기준이면 '건'(모두 1), 매출이면 '판매금액'."""
+        return '판매금액' if self.basis == 'rev' else '건'
+
+    def _weighted(self, df=None):
+        """무게 열이 붙은 표.
+
+        매출 기준일 때는 환불(음수)까지 그대로 더한다 — 실제로 남은 매출이 그거다.
+        건수 기준일 때는 환불을 뺀 실판매만 1로 센다.
+        """
+        if self.basis == 'rev':
+            return self.df if df is None else df
+        d = self.pos if df is None else df[df['판매금액'] > 0]
+        return d.assign(건=1)
 
     # ---------- 기초 집계 ----------
     @property
     def content(self):
         if self._content is None:
-            self._content = self.df.groupby('콘텐츠ID', observed=True).agg(
+            self._content = self._weighted(self.df.assign(
+                건=(self.df['판매금액'] > 0).astype(int))).groupby(
+                '콘텐츠ID', observed=True).agg(
                 콘텐츠명=('콘텐츠명', 'first'), 타입=('콘텐츠타입', 'first'),
                 크리에이터ID=('크리에이터ID', 'first'), 닉네임=('닉네임', 'first'),
                 출신마켓=('출신마켓', 'first'), 판매자유형=('판매자유형', 'first'),
-                매출=('판매금액', 'sum'), 건수=('판매금액', 'size'),
+                매출=('판매금액', 'sum'), 건수=('건', 'sum'),
                 구매자=('구매자', 'nunique'), 판매월수=('월', 'nunique'),
-            ).sort_values('매출', ascending=False)
+            ).sort_values('매출' if self.basis == 'rev' else '건수', ascending=False)
         return self._content
 
     # ---------- 콘텐츠 타입 ----------
@@ -84,7 +109,8 @@ class MarketMetrics:
 
     # ---------- 월별 ----------
     def monthly(self):
-        mo = self.df.groupby('월')['판매금액'].sum()
+        d = self._weighted()
+        mo = d.groupby('월')[self._w].sum()
         base = mo.mean()
         out = {}
         for m, v in mo.items():
@@ -103,7 +129,8 @@ class MarketMetrics:
     # ---------- 시간대 / 요일 ----------
     def timing(self):
         out = {}
-        hr = self.df.groupby('시')['판매금액'].sum().reindex(range(24), fill_value=0)
+        d = self._weighted()
+        hr = d.groupby('시')[self._w].sum().reindex(range(24), fill_value=0)
         hp = (hr / hr.sum() * 100).round(1)
         for h, v in hp.items():
             out[f'hour.{h}.pct'] = float(v)
@@ -116,7 +143,7 @@ class MarketMetrics:
         out['hour.window_start'], out['hour.window_end'] = lo, hi
         out['hour.window_pct'] = round(float(hp.loc[lo:hi].sum()), 1)
 
-        wd = self.df.groupby('요일')['판매금액'].sum().reindex(range(7), fill_value=0)
+        wd = d.groupby('요일')[self._w].sum().reindex(range(7), fill_value=0)
         wp = (wd / wd.sum() * 100).round(1)
         for i, name in enumerate(WEEKDAYS):
             out[f'weekday.{name}.pct'] = float(wp.iloc[i])
@@ -140,15 +167,21 @@ class MarketMetrics:
         return best if best else (0, 23)
 
     # ---------- 테마 ----------
+    @property
+    def _wcol(self):
+        """콘텐츠 표에서 쓸 무게 열 ('매출' 또는 '건수')."""
+        return '매출' if self.basis == 'rev' else '건수'
+
     def themes(self):
         g = self.content
-        tot = g['매출'].sum()
+        w = self._wcol
+        tot = g[w].sum()
         rows = []
         for name, pat in THEMES.items():
             m = g['콘텐츠명'].str.contains(pat, regex=True, na=False)
             if not m.any():
                 continue
-            rows.append((name, int(m.sum()), _pct(g.loc[m, '매출'].sum(), tot)))
+            rows.append((name, int(m.sum()), _pct(g.loc[m, w].sum(), tot)))
         rows.sort(key=lambda r: -r[2])
         out = {}
         for i, (name, n, pct) in enumerate(rows, 1):
@@ -160,9 +193,10 @@ class MarketMetrics:
 
     # ---------- 집중도 ----------
     def concentration(self):
-        g = self.content['매출']
-        c = self.df.groupby('크리에이터ID', observed=True)['판매금액'].sum().sort_values(ascending=False)
-        b = self.df.groupby('구매자')['판매금액'].sum().sort_values(ascending=False)
+        g = self.content[self._wcol]
+        wd = self._weighted(self.df.assign(건=(self.df['판매금액'] > 0).astype(int)))
+        c = wd.groupby('크리에이터ID', observed=True)[self._w].sum().sort_values(ascending=False)
+        b = wd.groupby('구매자')[self._w].sum().sort_values(ascending=False)
         out = {}
         for x in (10, 25, 50, 100):
             out[f'conc.content_top{x}_pct'] = _pct(g.head(x).sum(), g.sum())
@@ -206,14 +240,15 @@ class MarketMetrics:
 
     # ---------- 키워드 ----------
     def keywords(self, n=8):
-        g = self.df.groupby('콘텐츠ID', observed=True).agg(
-            명=('콘텐츠명', 'first'), 매출=('판매금액', 'sum'), 크리에이터=('크리에이터ID', 'first'))
+        g = self._weighted(self.df.assign(건=(self.df['판매금액'] > 0).astype(int))).groupby(
+            '콘텐츠ID', observed=True).agg(
+            명=('콘텐츠명', 'first'), 무게=(self._w, 'sum'), 크리에이터=('크리에이터ID', 'first'))
         rev, crt = Counter(), {}
         for _, r in g.iterrows():
             for tok in set(re.findall(r'[가-힣A-Za-z]{2,}', str(r['명']))):
                 if len(tok) < 2 or tok in _STOP:
                     continue
-                rev[tok] += int(r['매출'])
+                rev[tok] += int(r['무게'])
                 crt.setdefault(tok, set()).add(r['크리에이터'])
         # 크리에이터 5명 미만 단어는 특정 콘텐츠 지목이 되므로 제외 (배포 원칙)
         safe = [(t, v) for t, v in rev.most_common(400)
@@ -227,18 +262,19 @@ class MarketMetrics:
     # ---------- TOP25 (매출 기준) ----------
     def top25(self):
         t = self.content.head(25)
-        tot = t['매출'].sum()
+        w = self._wcol
+        tot = t[w].sum()
         out = {
-            'top25.anim_rev_pct': _pct(t.loc[t['타입'] == ANIM, '매출'].sum(), tot),
-            'top25.still_rev_pct': _pct(t.loc[t['타입'] == STILL, '매출'].sum(), tot),
-            'top25.share_of_market_pct': _pct(tot, self.content['매출'].sum()),
+            'top25.anim_rev_pct': _pct(t.loc[t['타입'] == ANIM, w].sum(), tot),
+            'top25.still_rev_pct': _pct(t.loc[t['타입'] == STILL, w].sum(), tot),
+            'top25.share_of_market_pct': _pct(tot, self.content[w].sum()),
             'top25.creator_count': int(t['크리에이터ID'].nunique()),
             'top25.avg_months': round(float(t['판매월수'].mean()), 1),
         }
         # 시리즈(넘버링/후속작) 비중 — 제목 패턴으로 판정
         ser = t['콘텐츠명'].str.contains(r'\d\s*(?:탄|편|기|번째)|ver\.?\s*\d|시즌\s*\d|part\s*\d',
                                      case=False, regex=True, na=False)
-        out['top25.series_rev_pct'] = _pct(t.loc[ser, '매출'].sum(), tot)
+        out['top25.series_rev_pct'] = _pct(t.loc[ser, w].sum(), tot)
         return out
 
     # ---------- 내부용 절대 수치 ----------

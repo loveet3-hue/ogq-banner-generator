@@ -60,17 +60,25 @@ COMPUTED_ROWS = {
 }
 
 
-def classify(analyzed, revenue):
-    """→ {속성: [(값, 매출비중%), ...] 내림차순}
+def classify(analyzed, weight, count_weight=None):
+    """→ {속성: [(값, 비중%), ...] 내림차순}
 
-    analyzed: {콘텐츠ID: {'title','tags','stats'}}
-    revenue:  {콘텐츠ID: 매출}
+    analyzed:     {콘텐츠ID: {'title','tags','stats'}}
+    weight:       매출액 무게 — 색상·배경 등 대부분의 줄이 이걸 쓴다
+    count_weight: 판매 수 무게 — '콘텐츠 유형'(정지형/애니) 줄만 이걸 쓴다.
+                  유형 비중은 판매 수로, 나머지는 매출액으로 재기로 했다.
     """
+    revenue = weight
     total = sum(revenue.get(cid, 0) for cid, d in analyzed.items() if d.get('stats'))
     if total <= 0:
         return {}, 0
+    counts = count_weight or revenue
+    ctotal = sum(counts.get(cid, 0) for cid, d in analyzed.items() if d.get('stats'))
     out = {}
     for attr, fn in COMPUTED_ROWS.items():
+        w, wtot = ((counts, ctotal) if attr == '콘텐츠 유형' else (revenue, total))
+        if wtot <= 0:
+            continue
         agg = {}
         for cid, d in analyzed.items():
             if not d.get('stats'):
@@ -79,9 +87,9 @@ def classify(analyzed, revenue):
                 label = fn(d)
             except Exception:
                 continue
-            agg[label] = agg.get(label, 0) + revenue.get(cid, 0)
+            agg[label] = agg.get(label, 0) + w.get(cid, 0)
         ranked = sorted(agg.items(), key=lambda kv: -kv[1])
-        out[attr] = [(k, round(v / total * 100, 1)) for k, v in ranked]
+        out[attr] = [(k, round(v / wtot * 100, 1)) for k, v in ranked]
     return out, total
 
 
@@ -105,34 +113,32 @@ def style_share(analyzed, revenue, label):
     return round(hit / total * 100, 1) if total else 0.0
 
 
-def type_count_share(analyzed, label):
-    """콘텐츠 '수' 기준 유형 비중 (27장 카드가 이 기준이다)."""
-    got = [d for d in analyzed.values() if d.get('stats')]
-    if not got:
-        return 0.0
-    hit = sum(1 for d in got if content_type(d['stats']) == label)
-    return round(hit / len(got) * 100, 1)
-
-
 # 카드 설명 문구는 판마다 조금씩 달라진다('애니메이션 스티커 매출 비중' →
 # '움직이는 이모티콘 매출 비중'). 통째로 비교하면 그때마다 빗나가므로,
 # 반드시 들어가야 할 조각(all)과 들어가면 안 되는 조각(none)으로 가린다.
+# 덱 안의 모든 비율은 **매출액 기준**으로 통일한다. 건수·구매자·콘텐츠 수로 재면
+# 같은 '애니 비중'인데 슬라이드마다 답이 달라지고, 채팅+처럼 우위가 뒤집히기도 한다
+# (매출 애니 58.3% vs 건수 정지형 54.9%).
 KPI_RULES = [
     # (필수 조각들, 금지 조각들, 값 만드는 함수)
-    (['정지형', '매출'], [], lambda a, r: type_share(a, r, '정지형')),
-    (['콘텐츠 수'], [], lambda a, r: type_count_share(a, '애니메이션')),
+    (['정지형'], ['텍스트', '밈', '표준어'], lambda a, r: type_share(a, r, '정지형')),
     (['시리즈'], [], lambda a, r: series_share(a, r)),
     (['파스텔'], [], lambda a, r: style_share(a, r, '파스텔')),
-    (['매출'], ['텍스트', '밈', '표준어', '정지형'],
-     lambda a, r: type_share(a, r, '애니메이션')),
+    (['애니메이션'], ['텍스트', '밈', '표준어'], lambda a, r: type_share(a, r, '애니메이션')),
+    (['움직이는'], ['텍스트', '밈', '표준어'], lambda a, r: type_share(a, r, '애니메이션')),
 ]
 
 
-def kpi_value(label, analyzed, revenue):
+# 유형(정지형/애니) 카드는 판매 수로, 나머지는 매출액으로 잰다
+_COUNT_CARDS = ('정지형', '애니메이션', '움직이는')
+
+
+def kpi_value(label, analyzed, revenue, counts=None):
     """카드 설명 문구 → 값. 짝이 없으면 None (그 카드는 손대지 않는다)."""
     for need, avoid, fn in KPI_RULES:
         if all(w in label for w in need) and not any(w in label for w in avoid):
-            return fn(analyzed, revenue)
+            use = counts if (counts and any(k in label for k in _COUNT_CARDS)) else revenue
+            return fn(analyzed, use)
     return None
 
 

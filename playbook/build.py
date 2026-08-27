@@ -170,19 +170,21 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
         for c in spec.TOP25:
             mk, sn = c['market'], c['slide']
             try:
+                # 상위 25종은 매출로 고른다. 다만 '콘텐츠 유형' 비중만 판매 수로 잰다.
                 top = metrics.MarketMetrics(mk, dfs[mk]).content.head(25)
                 rev = {str(k): int(v) for k, v in top['매출'].items()}
+                cnt = {str(k): int(v) for k, v in top['건수'].items()}
                 got = artwork.analyze_many(artwork.fetch_many(top.index))
                 miss = 25 - len(got)
                 if miss:
                     warn.append(f'{sn}장 TOP25 중 {miss}종은 마켓에서 찾지 못했습니다'
                                 f'(비공개·삭제된 콘텐츠일 수 있습니다). 나머지로 계산했습니다.')
-                classified, _ = attrs.classify(got, rev)
+                classified, _ = attrs.classify(got, rev, cnt)
                 _, dropped = fill.fill_top25_table(prs.slides[sn - 1], sn, classified, ch)
                 if dropped:
                     dropped_rows[sn] = dropped
                 fill.fill_top25_kpi(prs.slides[sn - 1], sn,
-                                    lambda lab: attrs.kpi_value(lab, got, rev), ch)
+                                    lambda lab: attrs.kpi_value(lab, got, rev, cnt), ch)
                 artwork_note = True
             except Exception as e:
                 warn.append(f'{sn}장 TOP25 속성: {e}')
@@ -192,6 +194,12 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
     if peak and peak != 2:
         warn.append(f'7장 채팅+ 설명이 "설날 시즌(2월)"으로 적혀 있는데 이번 기간의 성수기는 '
                     f'{peak}월입니다. 숫자만 바꿨으니 문구는 직접 고쳐 주세요.')
+
+    # 기준이 바뀐 설명줄 (예: '콘텐츠 수 기준' → 매출 기준으로 통일)
+    for c in spec.BASIS_CAPTIONS:
+        sh = fill.find_by_text(prs.slides[c['slide'] - 1], c['anchor'])
+        if sh is not None:
+            fill.set_text(sh, c['text'], ch, c['slide'], '기준 표기')
 
     # 시즌 캘린더 — 다음 달들의 명절·기념일. 음력이라 해마다 날짜가 바뀐다.
     end_y, end_m = per.end

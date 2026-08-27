@@ -745,6 +745,12 @@ def fill_top25_table(slide, sn, classified, changes):
     frame = frames[0]
     tbl = frame.table
     row_h = [r.height for r in tbl.rows]        # 지우기 전 행 높이
+
+    # 줄마다 잣대가 다르다(유형=판매 수 / 그 외=매출액). 열 이름을 '매출 비중'으로
+    # 두면 유형 줄이 거짓말이 되므로 중립으로 바꾼다.
+    for cell in tbl.rows[0].cells:
+        if cell.text.strip() == '매출 비중':
+            _set_cell(cell, '비중', changes, sn, 'TOP25 열 이름')
     filled, skipped = 0, []
     for row in list(tbl.rows)[1:]:
         cells = row.cells
