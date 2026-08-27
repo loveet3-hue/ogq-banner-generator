@@ -32,7 +32,10 @@ CHARTS = [
 
 # ---------------------------------------------------------------- 정지형/애니 비율 막대
 # 폭이 곧 비중인 가로 띠. 글자와 폭을 함께 갱신해야 한다.
-CTYPE_BARS = [dict(market=m, slide=INSIGHT_DETAIL[m]) for m in ('NOM', 'SOM', 'COM')]
+# 9장(SOOP 유형 선호도)은 은택님 요청으로 그대로 둔다.
+CTYPE_SKIP = {INSIGHT_DETAIL['SOM']}
+CTYPE_BARS = [dict(market=m, slide=INSIGHT_DETAIL[m]) for m in ('NOM', 'SOM', 'COM')
+              if INSIGHT_DETAIL[m] not in CTYPE_SKIP]
 
 # ---------------------------------------------------------------- TOP25 속성
 # 콘텐츠ID로 OGQ마켓을 조회해 실제 콘텐츠를 보고 채운다

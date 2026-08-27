@@ -448,7 +448,21 @@ def _fill_hex(shape):
         return None
 
 
-def fill_ctype_bar(slide, sn, still_pct, anim_pct, changes, band=(5.30, 5.60)):
+def _ctype_band(slide, min_y=4.5):
+    """'정지형 nn%' 글자가 놓인 높이. 띠는 그 글자와 같은 줄에 있다.
+
+    판마다 띠가 위아래로 조금씩 움직여서 높이를 못 박아 두면 못 찾는다
+    (v2_에서 5.30~5.60 → 5.16~5.19로 옮겨졌다).
+    """
+    for sh in text_shapes(slide):
+        t = sh.text_frame.text
+        if _in(sh.top) >= min_y and CTYPE_LABEL.search(t):
+            y = _in(sh.top)
+            return (y - 0.25, y + 0.25)
+    return None
+
+
+def fill_ctype_bar(slide, sn, still_pct, anim_pct, changes, band=None):
     """가로 띠를 값에 맞춰 다시 그린다.
 
     템플릿의 띠는 손으로 그려져 같은 색 사각형이 여러 장 겹쳐 있다(슬라이드마다 2~3장).
@@ -456,6 +470,9 @@ def fill_ctype_bar(slide, sn, still_pct, anim_pct, changes, band=(5.30, 5.60)):
     그래서 색으로 정지형/애니를 가려낸 뒤, 각 색 하나만 남기고 길이를 다시 잡는다.
     겹쳐 있던 나머지는 지운다 — 의도된 디자인이 아니라 편집하다 남은 사본이다.
     """
+    band = band or _ctype_band(slide)
+    if band is None:
+        return False
     lo, hi = band
     bars = [sh for sh in slide.shapes
             if lo <= _in(sh.top) <= hi and _in(sh.width) > 0.05
