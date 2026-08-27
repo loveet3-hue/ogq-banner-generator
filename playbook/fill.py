@@ -749,7 +749,7 @@ def fill_season_calendar(slide, sn, cards, changes):
 
 
 # ------------------------------------------------------------------ TOP25 속성 표 (13·20·27장)
-def fill_top25_table(slide, sn, classified, changes):
+def fill_top25_table(slide, sn, classified, changes, keep_rows=()):
     """속성 표에서 '근거가 있는 줄'만 채운다.
 
     표는 [속성 | 1위 값 | 매출 비중 | 2위 값 | 매출 비중] 다섯 칸이다.
@@ -772,6 +772,8 @@ def fill_top25_table(slide, sn, classified, changes):
     for row in list(tbl.rows)[1:]:
         cells = row.cells
         attr = cells[0].text.strip()
+        if attr in keep_rows:          # 손대지 않기로 한 줄
+            continue
         vals = classified.get(attr)
         if not vals:
             # 근거가 없는 줄은 지운다. 옛 값을 그대로 두면 다른 줄은 새 데이터인데

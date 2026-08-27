@@ -180,7 +180,8 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
                     warn.append(f'{sn}장 TOP25 중 {miss}종은 마켓에서 찾지 못했습니다'
                                 f'(비공개·삭제된 콘텐츠일 수 있습니다). 나머지로 계산했습니다.')
                 classified, _ = attrs.classify(got, rev, cnt)
-                _, dropped = fill.fill_top25_table(prs.slides[sn - 1], sn, classified, ch)
+                _, dropped = fill.fill_top25_table(prs.slides[sn - 1], sn, classified, ch,
+                                                   attrs.KEEP_ROWS)
                 if dropped:
                     dropped_rows[sn] = dropped
                 fill.fill_top25_kpi(prs.slides[sn - 1], sn,

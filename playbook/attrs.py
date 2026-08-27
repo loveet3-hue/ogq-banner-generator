@@ -177,9 +177,15 @@ COMPUTED_ROWS = {
     '상세 성격': lambda d: by_tags('상세 성격', d['tags'], d['title']),
     '색상 스타일': lambda d: color_style(d['stats']),
     '라인 스타일': lambda d: line_style(d['stats']),
-    '배경 유형': lambda d: background(d['stats']),
     '사용 맥락': lambda d: by_tags('사용 맥락', d['tags'], d['title']),
 }
+
+# 자동으로 채우지도, 지우지도 않고 손대지 않는 줄.
+#
+# '배경 유형': OGQ가 투명 PNG를 필수로 요구해서 재면 거의 언제나 '투명 100%'가
+# 나온다. 재는 것 자체는 되지만 갈라 주는 게 없어 쓸모가 없고, 사람이 눈으로
+# 골라 넣은 값(97.5% / 2.5%)을 덮어쓰기만 한다. 그래서 템플릿 값을 그대로 둔다.
+KEEP_ROWS = {'배경 유형'}
 
 
 def classify(analyzed, weight, count_weight=None):
