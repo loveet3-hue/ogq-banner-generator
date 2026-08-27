@@ -52,9 +52,22 @@ def background(st):
 
 # ---------------------------------------------------------------- 집계
 # 표의 어느 줄을 우리가 채우고, 어느 줄은 손대지 않는지
+def text_level(d):
+    """24장 중 글자가 든 장의 비율 → 높음/보통/낮음. OCR을 못 쓰면 None."""
+    r = d.get('text_ratio')
+    if r is None:
+        return None
+    if r >= 0.8:
+        return '높음'
+    if r >= 0.4:
+        return '보통'
+    return '낮음'
+
+
 # 실제 이미지에서 재는 것만 채운다.
 COMPUTED_ROWS = {
     '콘텐츠 유형': lambda d: content_type(d['stats']),
+    '텍스트 비중': text_level,
     '색상 스타일': lambda d: color_style(d['stats']),
     '배경 유형': lambda d: background(d['stats']),
 }
@@ -86,6 +99,8 @@ def classify(analyzed, weight, count_weight=None):
             try:
                 label = fn(d)
             except Exception:
+                continue
+            if label is None:      # OCR을 못 쓰는 등 잴 수 없는 경우
                 continue
             agg[label] = agg.get(label, 0) + w.get(cid, 0)
         ranked = sorted(agg.items(), key=lambda kv: -kv[1])
@@ -119,8 +134,38 @@ def style_share(analyzed, revenue, label):
 # 덱 안의 모든 비율은 **매출액 기준**으로 통일한다. 건수·구매자·콘텐츠 수로 재면
 # 같은 '애니 비중'인데 슬라이드마다 답이 달라지고, 채팅+처럼 우위가 뒤집히기도 한다
 # (매출 애니 58.3% vs 건수 정지형 54.9%).
+def text_share(analyzed, weight):
+    """글자가 든 콘텐츠의 비중. '글자가 하나라도 있으면' 텍스트 포함으로 본다."""
+    got = {c: d for c, d in analyzed.items() if d.get('text_ratio') is not None}
+    total = sum(weight.get(c, 0) for c in got)
+    if not total:
+        return None
+    hit = sum(weight.get(c, 0) for c, d in got.items() if d['text_ratio'] > 0)
+    return round(hit / total * 100, 1)
+
+
+def meme_share(analyzed, weight):
+    """밈·짤 태그가 달린 콘텐츠의 비중.
+
+    KPI_RULES에서는 빼 두었다. 크리에이터가 직접 단 태그라 근거가 아주 없진 않지만,
+    사람이 눈으로 매긴 값과 20%p 넘게 갈렸다(NAVER 자동 38.0% vs 사람 58.8%).
+    쓰려면 KPI_RULES에 (['밈'], [], meme_share)를 넣으면 된다.
+    """
+    words = ('밈', '짤', '유행어', '병맛', 'meme')
+    total = sum(weight.get(c, 0) for c in analyzed)
+    if not total:
+        return None
+    hit = 0
+    for cid, d in analyzed.items():
+        hay = ' '.join(str(t) for t in d.get('tags', [])) + ' ' + str(d.get('title', ''))
+        if any(w in hay for w in words):
+            hit += weight.get(cid, 0)
+    return round(hit / total * 100, 1)
+
+
 KPI_RULES = [
     # (필수 조각들, 금지 조각들, 값 만드는 함수)
+    (['텍스트 포함'], [], text_share),
     (['정지형'], ['텍스트', '밈', '표준어'], lambda a, r: type_share(a, r, '정지형')),
     (['시리즈'], [], lambda a, r: series_share(a, r)),
     (['파스텔'], [], lambda a, r: style_share(a, r, '파스텔')),
