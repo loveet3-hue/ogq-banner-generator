@@ -98,6 +98,8 @@ BASIS_CAPTIONS = [
          text='움직이는 이모티콘 판매 수 비중'),
     dict(slide=slide_of('COM', 'top25'), anchor='콘텐츠 수 기준',
          text='움직이는(GIF) 이모티콘 판매 수 비중'),
+    # 설명에 '신조어는 10%뿐'처럼 지난 판 숫자가 박혀 있으면 값과 어긋난다
+    dict(slide=slide_of('COM', 'top25'), anchor='신조어는', text='표준어 비중'),
     # 표에서 '콘텐츠 유형' 줄만 판매 수, 나머지는 매출액이라 열 이름을 중립으로
     dict(slide=slide_of('NOM', 'top25'), anchor='상위 콘텐츠 속성별 데이터',
          text='상위 콘텐츠 속성별 데이터 (유형=판매 수 · 그 외=매출액)'),

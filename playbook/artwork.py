@@ -91,7 +91,7 @@ def image_stats(urls):
        'saturation': 0~1, 'value': 0~1, 'n': 표본 수}
     """
     import numpy as np
-    anim, trans, sat, val, chroma, csat = [], [], [], [], [], []
+    anim, trans, sat, val, chroma, csat, stroke = [], [], [], [], [], [], []
     for u in urls:
         try:
             im = _load_image(u)
@@ -114,19 +114,29 @@ def image_stats(urls):
         colored = s_pix > 0.15
         chroma.append(float(colored.mean()))
         csat.append(float(s_pix[colored].mean()) if colored.any() else 0.0)
+        # 선 굵기: 어두운 윤곽을 한 겹 깎아 봤을 때 얼마나 남는지.
+        # 굵은 선일수록 많이 남는다 (가는 선은 한 겹만 깎아도 거의 사라진다).
+        dark = (mx < 0.45) & solid[solid] if False else None
+        d2 = (arr[..., :3].max(2) < 0.45) & solid
+        if d2.sum() > 30:
+            inner = (d2[1:-1, 1:-1] & d2[:-2, 1:-1] & d2[2:, 1:-1]
+                     & d2[1:-1, :-2] & d2[1:-1, 2:])
+            stroke.append(float(inner.sum()) / float(d2.sum()))
     if not anim:
         return None
     mean = lambda xs: float(sum(xs) / len(xs)) if xs else 0.0
     return {'animated_ratio': mean(anim), 'transparent_ratio': mean(trans),
             'saturation': mean(sat), 'value': mean(val),
-            'chroma_ratio': mean(chroma), 'chroma_sat': mean(csat), 'n': len(anim)}
+            'chroma_ratio': mean(chroma), 'chroma_sat': mean(csat),
+            'stroke': mean(stroke), 'n': len(anim)}
 
 
 def analyze(info):
     """조회 결과 + 이미지 → 속성 계산에 필요한 원자료."""
     urls = info.get('stickers', [])
     stats = image_stats(urls)
-    return {**info, 'stats': stats, 'text_ratio': text_ratio(urls)}
+    ratio, words = text_scan(urls)
+    return {**info, 'stats': stats, 'text_ratio': ratio, 'texts': words}
 
 
 def analyze_many(infos, workers=4, progress=None):
@@ -194,17 +204,20 @@ def read_text(im):
             pass
 
 
-def text_ratio(urls):
-    """스티커 표본 중 글자가 든 장의 비율. OCR을 못 쓰면 None."""
+def text_scan(urls):
+    """스티커 표본을 훑어 글자 비율과 읽힌 문구를 모은다. OCR을 못 쓰면 (None, [])."""
     if not ocr_available():
-        return None
+        return None, []
     hit = seen = 0
+    words = []
     for u in urls:
         try:
             im = _load_image(u)
         except Exception:
             continue
         seen += 1
-        if read_text(im):
+        got = read_text(im)
+        if got:
             hit += 1
-    return round(hit / seen, 3) if seen else None
+            words += got
+    return (round(hit / seen, 3) if seen else None), words
