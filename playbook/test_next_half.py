@@ -44,17 +44,16 @@ for si, sl in enumerate(prs.slides, 1):
         if not sh.has_text_frame:
             continue
         t = sh.text_frame.text
-        if '상반기' in t and '시즌 캘린더' not in t:
+        if '상반기' in t and '캘린더' not in t:
             bad.append((si, t[:60]))
         # 캘린더 표제는 카드가 실제로 덮는 달을 가리켜야 한다.
         # 하반기(7~12월) 데이터면 2027년 3~6월을 안내한다(데이터 끝 +3개월부터 4개월).
-        if re.match(r'\d{4}\s*\d{1,2}~\d{1,2}월\s*(시즌\s*)?캘린더', t.strip()):
+        # 네 달이 한 반기 안에 들면 v2 덱처럼 '2027 상반기'로 적는다.
+        if re.match(r'\d{4}\s*(상반기|하반기|\d{1,2}~\d{1,2}월)\s*(시즌\s*)?캘린더', t.strip()):
             cal_headings.append((si, t.strip()))
-        elif re.search(r'\d{4}\s*(상반기|하반기)\s*(시즌\s*)?캘린더', t):
-            bad.append((si, f'캘린더 표제가 안 바뀜: {t[:60]}'))
 for si, t in cal_headings:
-    if '2027 3~6월' not in t:
-        bad.append((si, f'캘린더가 2027 3~6월을 안 가리킴: {t}'))
+    if '2027 상반기' not in t:
+        bad.append((si, f'캘린더가 2027 상반기를 안 가리킴: {t}'))
 if not cal_headings:
     bad.append((0, '캘린더 표제를 하나도 못 찾았습니다'))
 

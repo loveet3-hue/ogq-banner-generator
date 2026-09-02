@@ -185,16 +185,32 @@ COMPUTED_ROWS = {
 # '배경 유형': OGQ가 투명 PNG를 필수로 요구해서 재면 거의 언제나 '투명 100%'가
 # 나온다. 재는 것 자체는 되지만 갈라 주는 게 없어 쓸모가 없고, 사람이 눈으로
 # 골라 넣은 값(97.5% / 2.5%)을 덮어쓰기만 한다. 그래서 템플릿 값을 그대로 둔다.
-KEEP_ROWS = {'배경 유형'}
+# 표에서 자동으로 채우지 않는 줄.
+#
+# 이미지 분류기가 내놓는 값이 v2 최종본(사람이 25종을 눈으로 보고 정리한 표)과
+# 분류 체계부터 다르다. 예를 들어 최종본은 '감탄사·의성어 / 짧은 대사·문장',
+# '동물 의인화', '캐릭터 리액션'처럼 나누는데 분류기는 '표준어 / 동물 / 방송·게임'
+# 으로 뭉갠다. 값도 크게 어긋난다(NOM 기반 분류: 최종본 추상적 캐릭터 52.6%,
+# 분류기 동물 36.2%). 덮어쓰면 잘 만들어 둔 표가 나빠지므로 손대지 않는다.
+#
+# 분류기 추정치는 버리지 않고 변경내역에 '참고값'으로 남긴다. 사람이 새 판을
+# 채울 때 출발점으로 쓰라는 뜻이다.
+#
+# AUTO_ROWS 를 늘리면 그만큼 자동으로 채운다. 근거가 생기면 옮길 것.
+AUTO_ROWS = {'콘텐츠 유형'}
+CURATED_ROWS = {'텍스트 비중', '텍스트 종류', '기반 분류', '콘텐츠 도메인',
+                '상세 성격', '색상 스타일', '라인 스타일', '배경 유형', '사용 맥락'}
+KEEP_ROWS = CURATED_ROWS
 
 
 def classify(analyzed, weight, count_weight=None):
     """→ {속성: [(값, 비중%), ...] 내림차순}
 
     analyzed:     {콘텐츠ID: {'title','tags','stats'}}
-    weight:       매출액 무게 — 색상·배경 등 대부분의 줄이 이걸 쓴다
-    count_weight: 판매 수 무게 — '콘텐츠 유형'(정지형/애니) 줄만 이걸 쓴다.
-                  유형 비중은 판매 수로, 나머지는 매출액으로 재기로 했다.
+    weight:       매출액 무게 — 표 머리글이 '매출 비중'이므로 모든 줄이 이걸 쓴다
+    count_weight: (더 이상 쓰지 않음) 예전에는 '콘텐츠 유형' 줄만 판매 수로 쟀는데,
+                  그러면 머리글 '매출 비중'과 그 줄만 기준이 달라져 표 안에서
+                  잣대가 섞였다. v2 최종본도 매출 기준이라 매출로 통일한다.
     """
     revenue = weight
     total = sum(revenue.get(cid, 0) for cid, d in analyzed.items() if d.get('stats'))
@@ -204,7 +220,7 @@ def classify(analyzed, weight, count_weight=None):
     ctotal = sum(counts.get(cid, 0) for cid, d in analyzed.items() if d.get('stats'))
     out = {}
     for attr, fn in COMPUTED_ROWS.items():
-        w, wtot = ((counts, ctotal) if attr == '콘텐츠 유형' else (revenue, total))
+        w, wtot = revenue, total
         if wtot <= 0:
             continue
         agg = {}
@@ -301,15 +317,27 @@ KPI_RULES = [
 ]
 
 
-# 유형(정지형/애니) 카드는 판매 수로, 나머지는 매출액으로 잰다
-_COUNT_CARDS = ('정지형', '애니메이션', '움직이는')
+def basis_of(label, revenue, counts=None, uniform=None):
+    """카드 설명 문구가 스스로 밝힌 잣대를 따른다.
+
+    덱은 카드마다 기준을 글로 적어 둔다 — '매출 비중', '(이모티콘 수 기준)',
+    '판매 수 비중'. 코드가 기준을 따로 정해 두면 문구와 숫자가 어긋나므로
+    (v2 최종본에서 실제로 어긋났다) 문구를 읽어서 무게를 고른다.
+
+    반환: (무게 dict, 기준 이름)
+    """
+    if re.search(r'(이모티콘|콘텐츠|스티커)\s*수\s*기준', label) or '종수' in label:
+        return (uniform if uniform else revenue), '콘텐츠 수'
+    if '판매 수' in label:
+        return (counts if counts else revenue), '판매 수'
+    return revenue, '매출액'
 
 
-def kpi_value(label, analyzed, revenue, counts=None):
+def kpi_value(label, analyzed, revenue, counts=None, uniform=None):
     """카드 설명 문구 → 값. 짝이 없으면 None (그 카드는 손대지 않는다)."""
     for need, avoid, fn in KPI_RULES:
         if all(w in label for w in need) and not any(w in label for w in avoid):
-            use = counts if (counts and any(k in label for k in _COUNT_CARDS)) else revenue
+            use, _ = basis_of(label, revenue, counts, uniform)
             return fn(analyzed, use)
     return None
 

@@ -32,6 +32,7 @@ class Report:
     reject_other_pct: float = 0.0
     changed_slides: list = field(default_factory=list)
     metric_count: int = 0
+    reference: dict = field(default_factory=dict)   # 사람이 채울 줄의 분류기 추정치
 
     def changelog_md(self):
         lines = [f'# {self.period} 플레이북 생성 변경내역', '',
@@ -41,6 +42,16 @@ class Report:
         for c in self.changes:
             lines.append(f'| {c["slide"]} | {c["what"]} | '
                          f'{c["before"][:40]} | {c["after"][:40]} |')
+        if self.reference:
+            lines += ['', '## 참고값 — TOP25 속성 표 (덱에는 넣지 않았습니다)', '',
+                      '이 줄들은 그림을 눈으로 봐야 정해지는 값이라 자동으로 채우지 않습니다.',
+                      '아래는 이미지 분류기가 어림한 값이니, 직접 채우실 때 출발점으로만 봐주세요.', '',
+                      '| 슬라이드 | 속성 | 1위 (추정) | 2위 (추정) |', '| --- | --- | --- | --- |']
+            for sn in sorted(self.reference):
+                for attr, vals in self.reference[sn].items():
+                    a = f'{vals[0][0]} {vals[0][1]:g}%' if vals else '—'
+                    b = f'{vals[1][0]} {vals[1][1]:g}%' if len(vals) > 1 else '—'
+                    lines.append(f'| {sn} | {attr} | {a} | {b} |')
         return '\n'.join(lines)
 
 
@@ -98,6 +109,7 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
     warn = []
     artwork_note = False
     dropped_rows = {}
+    reference = {}
 
     # 1) 데이터
     step(1, '엑셀 읽는 중')
@@ -170,22 +182,34 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
         for c in spec.TOP25:
             mk, sn = c['market'], c['slide']
             try:
-                # 상위 25종은 매출로 고른다. 다만 '콘텐츠 유형' 비중만 판매 수로 잰다.
+                # 상위 25종은 매출로 고른다. 잣대(매출/판매 수/콘텐츠 수)는
+                # 카드·표에 적힌 문구를 읽어서 고른다 — attrs.basis_of 참고.
                 top = metrics.MarketMetrics(mk, dfs[mk]).content.head(25)
                 rev = {str(k): int(v) for k, v in top['매출'].items()}
                 cnt = {str(k): int(v) for k, v in top['건수'].items()}
+                uni = {str(k): 1 for k in top.index}
                 got = artwork.analyze_many(artwork.fetch_many(top.index))
                 miss = 25 - len(got)
                 if miss:
                     warn.append(f'{sn}장 TOP25 중 {miss}종은 마켓에서 찾지 못했습니다'
                                 f'(비공개·삭제된 콘텐츠일 수 있습니다). 나머지로 계산했습니다.')
                 classified, _ = attrs.classify(got, rev, cnt)
+                ref = {a: v for a, v in classified.items()
+                       if a in attrs.KEEP_ROWS and v}
+                if ref:
+                    reference[sn] = ref
                 _, dropped = fill.fill_top25_table(prs.slides[sn - 1], sn, classified, ch,
                                                    attrs.KEEP_ROWS)
                 if dropped:
                     dropped_rows[sn] = dropped
-                fill.fill_top25_kpi(prs.slides[sn - 1], sn,
-                                    lambda lab: attrs.kpi_value(lab, got, rev, cnt), ch)
+                fill.fill_top25_kpi(
+                    prs.slides[sn - 1], sn,
+                    lambda lab: attrs.kpi_value(lab, got, rev, cnt, uni), ch)
+                # OCR이 25종 전부에서 글자를 찾았다면 과검출을 의심한다.
+                ts = attrs.text_share(got, rev)
+                if ts >= 99.5:
+                    warn.append(f'{sn}장 "텍스트 포함 콘텐츠 비중"이 {ts:.1f}%로 나왔습니다. '
+                                f'OCR이 배경 무늬까지 글자로 본 것일 수 있으니 눈으로 확인해 주세요.')
                 artwork_note = True
             except Exception as e:
                 warn.append(f'{sn}장 TOP25 속성: {e}')
@@ -317,6 +341,7 @@ def build(xlsx_paths, reject_path=None, reject_month=None,
         reject_other_pct=rj['reject.other_pct'] if rj else 0.0,
         changed_slides=sorted({c['slide'] for c in ch if c['slide']}),
         metric_count=len(flat),
+        reference=reference,
     )
 
 

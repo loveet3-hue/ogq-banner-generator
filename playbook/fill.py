@@ -763,11 +763,7 @@ def fill_top25_table(slide, sn, classified, changes, keep_rows=()):
     tbl = frame.table
     row_h = [r.height for r in tbl.rows]        # 지우기 전 행 높이
 
-    # 줄마다 잣대가 다르다(유형=판매 수 / 그 외=매출액). 열 이름을 '매출 비중'으로
-    # 두면 유형 줄이 거짓말이 되므로 중립으로 바꾼다.
-    for cell in tbl.rows[0].cells:
-        if cell.text.strip() == '매출 비중':
-            _set_cell(cell, '비중', changes, sn, 'TOP25 열 이름')
+    # 이제 모든 줄이 매출 기준이라 머리글('매출 비중')을 그대로 둔다.
     filled, skipped = 0, []
     for row in list(tbl.rows)[1:]:
         cells = row.cells
@@ -784,8 +780,8 @@ def fill_top25_table(slide, sn, classified, changes, keep_rows=()):
             continue
         top1 = vals[0]
         # 값이 한 종류뿐이면 2위 칸에 '0%'를 쓰지 않는다 — 없는 것과 0인 것은 다르다
-        top2 = (vals[1][0], f'{vals[1][1]:g}%') if len(vals) > 1 else ('—', '—')
-        for cell, new in ((cells[1], top1[0]), (cells[2], f'{top1[1]:g}%'),
+        top2 = (vals[1][0], f'{vals[1][1]:.1f}%') if len(vals) > 1 else ('—', '—')
+        for cell, new in ((cells[1], top1[0]), (cells[2], f'{top1[1]:.1f}%'),
                           (cells[3], top2[0]), (cells[4], top2[1])):
             _set_cell(cell, new, changes, sn, f'TOP25 {attr}')
         filled += 1
@@ -837,7 +833,7 @@ def fill_top25_kpi(slide, sn, value_of, changes):
             continue
         value = value_of(subs[0].text_frame.text)
         if value is not None:
-            set_text(sh, f'{value:g}%', changes, sn, 'TOP25 KPI')
+            set_text(sh, f'{value:.1f}%', changes, sn, 'TOP25 KPI')
             n += 1
     return n
 

@@ -224,10 +224,19 @@ def cards(end_year, end_month, market, count=CARD_COUNT, lead=LEAD_MONTHS):
 
 
 def span_label(cards_):
-    """'2026 9~12월' 처럼 캘린더가 덮는 구간 표기."""
+    """캘린더가 덮는 구간 표기.
+
+    네 달이 한 반기 안에 들어가면 v2 최종본처럼 '2026 하반기'로 적는다.
+    (9~12월은 하반기의 일부지만, 덱은 반기 단위로 부르기로 했다.)
+    반기를 걸치면 달 범위를 그대로 적는다.
+    """
     if not cards_:
         return ''
     a, b = cards_[0], cards_[-1]
     if a['year'] == b['year']:
+        half_a = 1 if a['month_num'] <= 6 else 2
+        half_b = 1 if b['month_num'] <= 6 else 2
+        if half_a == half_b:
+            return f'{a["year"]} {"상반기" if half_a == 1 else "하반기"}'
         return f'{a["year"]} {a["month_num"]}~{b["month_num"]}월'
     return f'{a["year"]}년 {a["month_num"]}월~{b["year"]}년 {b["month_num"]}월'
