@@ -181,17 +181,23 @@ with tab_banner:
 # =========================================================================
 @st.cache_resource(show_spinner=False)
 def _ensure_chromium():
-    """Playwright Chromium 설치 (클라우드 첫 부팅 시 1회, 로컬은 이미 있으면 통과)"""
+    """Chromium 설치 + 실행 가능 상태 보장 (apt 불가 환경에서는 라이브러리 직접 부트스트랩)"""
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
-            if os.path.exists(p.chromium.executable_path):
-                return True
+            need_install = not os.path.exists(p.chromium.executable_path)
     except Exception:
-        pass
-    r = subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"],
-                       capture_output=True, text=True, timeout=600)
-    return r.returncode == 0
+        need_install = True
+    if need_install:
+        r = subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"],
+                           capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            return False
+    import chromium_boot
+    ok, msg = chromium_boot.ensure_chromium_runs()
+    if not ok:
+        st.session_state["_chromium_err"] = msg
+    return ok
 
 
 with tab_card:
@@ -248,7 +254,9 @@ with tab_card:
     if go_card and df is not None:
         with st.spinner("렌더링 엔진 준비 중... (첫 실행은 1~2분)"):
             if not _ensure_chromium():
-                st.error("Chromium 설치에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+                st.error("렌더링 엔진 준비에 실패했습니다: "
+                         + str(st.session_state.get("_chromium_err", ""))
+                         + "\n잠시 후 다시 시도하시거나, Drive의 Mac용 카드뉴스 생성기를 이용해 주세요.")
                 st.stop()
         cfg = mc.load_config(Path(CARDNEWS_DIR) / "config.yaml")
         cfg["month"] = month.strip() or cfg.get("month", "")
