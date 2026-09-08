@@ -11,5 +11,3 @@ numpy>=1.24
 google-auth>=2.20
 google-api-python-client>=2.100
 korean-lunar-calendar>=0.3
-# 맥 내장 OCR (스티커 글자 읽기). 맥이 아니면 설치되지 않고, 그 값은 비워 둔다
-pyobjc-framework-Vision>=10; sys_platform == 'darwin'
