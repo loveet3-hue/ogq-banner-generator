@@ -8,6 +8,7 @@ OGQ 콘텐츠 생성기 — 웹 버전 (Streamlit)
 import contextlib
 import io
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -39,18 +40,130 @@ tab_banner, tab_card, tab_playbook = st.tabs(
 
 
 # =========================================================================
-# 탭 1: 배너 생성기 — banner_tool.html (zip을 올리면 브라우저 안에서 바로 그림)
+# 탭 1: 배너 생성기 — banner_studio (zip → SOM·NOM·COM·인스타, 시안 3개)
 # =========================================================================
-@st.cache_resource(show_spinner=False)
-def _banner_tool_html():
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "banner_tool.html")
-    return open(p, encoding="utf-8").read()
-
+import banner_studio as bst  # noqa: E402
 
 with tab_banner:
-    st.caption("OGQ 제출용 zip을 올리면 지면별 규격(SOM·NOM·COM·인스타)에 맞춘 출시 배너를 시안 3개로 만들어 드립니다. "
-               "모든 작업은 이 브라우저 안에서만 처리돼요.")
-    components.html(_banner_tool_html(), height=1100, scrolling=False)
+    st.caption("OGQ 제출용 zip(1~24.png/gif · main · tab)을 올리면 지면별 규격에 맞춘 출시 배너를 "
+               "시안 3개로 만들어 드립니다.")
+
+    up = st.file_uploader("이모티콘 zip", type=["zip"], key="studio_zip")
+    sd = st.session_state.get("studio")
+    if up is not None and (sd is None or sd.get("file") != (up.name, up.size)):
+        try:
+            with st.spinner("이모티콘 불러오는 중..."):
+                emos, name = bst.read_zip(up.getvalue(), unicodedata.normalize("NFC", up.name))
+            st.session_state["studio"] = sd = {"file": (up.name, up.size), "emos": emos, "name": name}
+            st.session_state.pop("studio_res", None)
+        except Exception as e:
+            st.error(f"zip을 읽지 못했습니다: {e}")
+            sd = None
+    if up is None and sd is not None:
+        sd = None
+        st.session_state.pop("studio", None)
+        st.session_state.pop("studio_res", None)
+
+    if sd:
+        emos, default_name = sd["emos"], sd["name"]
+        st.success(f"**{default_name}** · 이모티콘 {len(emos)}개")
+        with st.expander("🔢 이모티콘 번호 보기 (시안에서 번호로 지정할 때 참고)"):
+            cols = st.columns(8)
+            for i, e in enumerate(emos):
+                with cols[i % 8]:
+                    st.image(e["sample"], caption=str(e["num"]), use_container_width=True)
+
+        with st.container(border=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                name_in = st.text_input("이모티콘 이름 (인스타 제목 · *별표*는 강조색)", value=default_name)
+                chat_in = st.text_input("채팅플러스(COM) 출시 문구",
+                                        placeholder=f"비우면: {default_name} 이모티콘 *출시*")
+            with c2:
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    tag_in = st.text_input("COM 문구 위 라벨", value="NEW 이모티콘")
+                with cc2:
+                    creator_in = st.text_input("크리에이터명 (인스타)", placeholder="예) 아지그림")
+                footer_in = st.text_input("인스타 하단 문구", value="OGQ마켓 *출시!*")
+
+            st.markdown("**만들 지면**")
+            t1, t2, t3, t4 = st.columns(4)
+            targets = []
+            if t1.checkbox("SOM · SOOP 메인", value=True, help="PC 1344×260 / MO 672×440"):
+                targets.append("som")
+            if t2.checkbox("NOM · 네이버", value=True, help="PC 824×464 / MO 640×360"):
+                targets.append("nom")
+            if t3.checkbox("COM · 채팅플러스", value=True, help="984×552, 문구 포함"):
+                targets.append("com")
+            if t4.checkbox("인스타 카드뉴스", value=False, help="1080×1350"):
+                targets.append("insta")
+
+            st.markdown("**시안** — 비워두면 시안마다 디자인·배경색·이모티콘이 다르게 자동으로 정해져요.")
+            parse_nums = lambda t: [int(x) for x in re.split(r"[,\s]+", t.strip()) if x.isdigit()]
+            variants = []
+            vc = st.columns(3)
+            for k in range(3):
+                with vc[k], st.container(border=True):
+                    on = st.checkbox(f"시안 {k + 1} 사용", value=True, key=f"sv{k}_on")
+                    style = st.selectbox("디자인", list(bst.STYLES), key=f"sv{k}_style",
+                                         index=list(bst.STYLES).index(bst.DEFAULT_STYLES[k]),
+                                         format_func=lambda v: bst.STYLES[v])
+                    color = st.selectbox("배경색", ["auto"] + list(bst.PALETTES) + ["custom"], key=f"sv{k}_color",
+                                         format_func=lambda v: {"auto": "자동", "custom": "직접 고르기"}.get(v, bst.PALETTES.get(v, {}).get("label", v)))
+                    hexv = "#CFE5F8"
+                    if color == "custom":
+                        hexv = st.color_picker("배경색 직접 선택", "#CFE5F8", key=f"sv{k}_hex")
+                    pick = st.text_input("이모티콘 번호 (왼·중·오·추가)", key=f"sv{k}_pick",
+                                         placeholder="비우면 자동  예) 1, 9, 13")
+                    icons = st.text_input("COM 문구 양옆 아이콘 2개", key=f"sv{k}_icons",
+                                          placeholder="비우면 자동  예) 2, 22")
+                    variants.append(dict(on=on, style=style, color=color, hex=hexv.upper(),
+                                         pick=parse_nums(pick), icons=parse_nums(icons)))
+
+            go_banner = st.button("✨ 배너 만들기", type="primary", use_container_width=True,
+                                  disabled=not targets)
+
+        if go_banner:
+            opts = dict(
+                name=(name_in.strip() or default_name),
+                chat=(chat_in.strip() or f"{name_in.strip() or default_name} 이모티콘 *출시*"),
+                tagline=tag_in.strip(), creator=creator_in.strip(), footer=footer_in.strip())
+            prog = st.progress(0, text="배너 그리는 중...")
+            res = bst.generate(emos, opts, variants, targets,
+                               progress=lambda k, n: prog.progress(k / n, text=f"시안 {k + 1}/{n} 그리는 중..."))
+            prog.empty()
+            safe = re.sub(r"[^0-9A-Za-z가-힣]+", "_", opts["name"].replace("*", "")).strip("_") or "emoticon"
+            st.session_state["studio_res"] = {"res": res, "base": safe}
+
+    sres = st.session_state.get("studio_res")
+    if sres:
+        res, base = sres["res"], sres["base"]
+        # 전체 zip
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for r in res:
+                for f in r["files"]:
+                    z.writestr(f"{r['label'].replace(' ', '')}/{f['name']}", f["data"])
+        buf.seek(0)
+        st.download_button("⬇️  전체 시안 zip 받기", data=buf, file_name=f"{base}_배너_전체시안.zip",
+                           mime="application/zip", type="primary", key="studio_all")
+        vtabs = st.tabs([f"{r['label']} · {bst.STYLES[r['style']]} · {r['pal_label']}" for r in res])
+        for r, vt in zip(res, vtabs):
+            with vt:
+                st.caption(f"사용한 이모티콘 {', '.join(map(str, r['pick']))} · COM 아이콘 {', '.join(map(str, r['icons']))}")
+                vbuf = io.BytesIO()
+                with zipfile.ZipFile(vbuf, "w", zipfile.ZIP_DEFLATED) as z:
+                    for f in r["files"]:
+                        z.writestr(f["name"], f["data"])
+                vbuf.seek(0)
+                st.download_button(f"⬇️ {r['label']} zip 받기", data=vbuf,
+                                   file_name=f"{base}_{r['label'].replace(' ', '')}.zip",
+                                   mime="application/zip", key=f"studio_{r['label']}")
+                for f in r["files"]:
+                    kb = len(f["data"]) // 1024
+                    st.image(f["data"], caption=f"{f['name']} · {f['w']}×{f['h']} · {kb}KB",
+                             use_container_width=(f["w"] > 700))
 
 
 # =========================================================================
