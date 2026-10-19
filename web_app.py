@@ -48,7 +48,9 @@ def _banner_tool_html():
 
 
 with tab_banner:
-    components.html(_banner_tool_html(), height=1750, scrolling=True)
+    st.caption("OGQ 제출용 zip을 올리면 지면별 규격(SOM·NOM·COM·인스타)에 맞춘 출시 배너를 시안 3개로 만들어 드립니다. "
+               "모든 작업은 이 브라우저 안에서만 처리돼요.")
+    components.html(_banner_tool_html(), height=1100, scrolling=False)
 
 
 # =========================================================================

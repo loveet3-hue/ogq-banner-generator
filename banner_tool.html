@@ -112,6 +112,11 @@ input[type=text]:focus,select:focus,button:focus-visible,.drop:focus-within{outl
 .legend{font-size:12px;color:var(--ink-3);display:flex;gap:6px;align-items:center}
 .legend i{width:14px;height:10px;display:inline-block;background:repeating-linear-gradient(45deg,rgba(240,69,127,.22) 0 4px,transparent 4px 8px);border:1px dashed rgba(240,69,127,.6)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* Streamlit 탭 안에 들어갔을 때 (embed) */
+:root.embed body{background:transparent;padding-block:2px 24px;padding-left:2px;padding-right:2px}
+:root.embed header.top>div:first-child{display:none}
+:root.embed header.top{justify-content:flex-end}
+:root.embed .wrap{max-width:none;gap:14px}
 </style>
 
 <div class="wrap">
@@ -650,6 +655,20 @@ $("dlAll").addEventListener("click", () => {
   zipAndSave(state.results.flatMap(r => r.files.map(f => [`${r.label.replace(/\s/g,"")}/${f.name}`, f.blob])), `${state.baseName}_배너_전체시안.zip`); });
 
 buildVars(); buildBoards();
+
+// Streamlit components.html 안(iframe srcdoc, same-origin)에서는:
+// 중복 머리글을 숨기고, 페이지 테마(라이트)에 맞추고, iframe 높이를 내용에 맞춰 자동 조절
+if (window.frameElement){
+  document.documentElement.classList.add("embed");
+  document.documentElement.dataset.theme = "light";
+  const fit = () => { try {
+    const h = Math.ceil(document.documentElement.scrollHeight) + 8;
+    const cur = parseInt(window.frameElement.style.height) || 0;
+    if (Math.abs(cur - h) > 6){ window.frameElement.style.height = h + "px"; window.frameElement.setAttribute("height", h); }
+  } catch(e){} };
+  try { new ResizeObserver(fit).observe(document.body); } catch(e){}
+  setInterval(fit, 400); fit();
+}
 })();
 </script>
 
