@@ -1,5 +1,8 @@
 [theme]
 base = "light"
 primaryColor = "#FF7A59"
+[client]
+showErrorDetails = "full"
+
 [server]
 maxUploadSize = 200

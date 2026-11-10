@@ -685,8 +685,10 @@ def render_insta(P, style, emos, picks, opts):
 def _encode_apng(frames_rgb, colors, step):
     """프레임(RGB)들을 공통 팔레트로 양자화해 APNG 인코딩"""
     fs = frames_rgb[::step]
-    pal = fs[0].quantize(colors, method=Image.MEDIANCUT)
-    qs = [pal] + [f.quantize(colors, palette=pal, dither=Image.FLOYDSTEINBERG) for f in fs[1:]]
+    MEDIANCUT = getattr(getattr(Image, "Quantize", Image), "MEDIANCUT", 0)
+    FS_DITHER = getattr(getattr(Image, "Dither", Image), "FLOYDSTEINBERG", 3)
+    pal = fs[0].quantize(colors, method=MEDIANCUT)
+    qs = [pal] + [f.quantize(colors, palette=pal, dither=FS_DITHER) for f in fs[1:]]
     buf = io.BytesIO()
     qs[0].save(buf, "PNG", save_all=True, append_images=qs[1:], duration=TICK * step, loop=0,
                optimize=True)

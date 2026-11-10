@@ -145,7 +145,14 @@ with tab_banner:
                 label = f"시안 {k + 1}/{n} · {msg}..." if msg else f"시안 {k + 1}/{n} 그리는 중..."
                 prog.progress(min(0.99, k / n), text=label)
 
-            res = bst.generate(emos, opts, variants, targets, progress=_prog, anim=anim_on)
+            try:
+                res = bst.generate(emos, opts, variants, targets, progress=_prog, anim=anim_on)
+            except Exception:
+                import traceback
+                prog.empty()
+                st.error("배너 생성 중 오류가 났습니다. 아래 내용을 그대로 담당자에게 보내주세요.\n```\n"
+                         + traceback.format_exc()[-1500:] + "\n```")
+                st.stop()
             prog.empty()
             safe = re.sub(r"[^0-9A-Za-z가-힣]+", "_", opts["name"].replace("*", "")).strip("_") or "emoticon"
             st.session_state["studio_res"] = {"res": res, "base": safe}
