@@ -682,27 +682,52 @@ def render_insta(P, style, emos, picks, opts):
     return img
 
 
-def _encode_apng(frames_rgb, colors, step):
-    """프레임(RGB)들을 공통 팔레트로 양자화해 APNG 인코딩"""
-    fs = frames_rgb[::step]
+def _encode_apng(frames_rgb, durations, colors, step):
+    """프레임(RGB)들을 공통 팔레트로 양자화해 APNG 인코딩.
+    step>1 이면 프레임을 솎되 지속시간을 합쳐 재생 속도를 유지한다."""
+    fs, ds = [], []
+    for i, f in enumerate(frames_rgb):
+        if i % step == 0:
+            fs.append(f)
+            ds.append(durations[i])
+        else:
+            ds[-1] += durations[i]
     MEDIANCUT = getattr(getattr(Image, "Quantize", Image), "MEDIANCUT", 0)
     FS_DITHER = getattr(getattr(Image, "Dither", Image), "FLOYDSTEINBERG", 3)
     pal = fs[0].quantize(colors, method=MEDIANCUT)
     qs = [pal] + [f.quantize(colors, palette=pal, dither=FS_DITHER) for f in fs[1:]]
     buf = io.BytesIO()
-    qs[0].save(buf, "PNG", save_all=True, append_images=qs[1:], duration=TICK * step, loop=0,
+    qs[0].save(buf, "PNG", save_all=True, append_images=qs[1:], duration=ds, loop=0,
                optimize=True)
     return buf.getvalue(), len(fs)
 
 
 def export_animated(key, base, P, style, emos, picks, opts, used):
-    """사용된 GIF 들의 길이에 맞춰 장면을 다시 그려 APNG 로 (HTML exportAnimated 동일)"""
+    """사용된 GIF 들의 '실제 프레임 전환 시각'마다 장면을 그려 APNG 로.
+    고정 간격 샘플링이 아니라 원본 delay 를 따르므로 재생 속도가 그대로 보존된다."""
     global ANIM_T
     for i in used:
         ensure_frames(emos[i])
     loop = min(MAX_LOOP, max(emos[i]["frames"]["total"] for i in used))
+    # 전환 시각 수집 (루프 안에서 각 GIF 가 프레임을 바꾸는 모든 순간)
+    events = {0}
+    for i in used:
+        f = emos[i]["frames"]
+        acc = 0
+        while acc < loop:
+            for fr in f["list"]:
+                acc += fr["delay"]
+                if acc >= loop:
+                    break
+                events.add(acc)
+    times = [0]
+    for t in sorted(events):
+        if t - times[-1] >= 45:        # 45ms 미만 간격은 병합 (용량 보호)
+            times.append(t)
+    durations = [times[i + 1] - times[i] for i in range(len(times) - 1)]
+    durations.append(max(20, loop - times[-1]))
     frames = []
-    for t in range(0, loop, TICK):
+    for t in times:
         ANIM_T = t
         frames.append(render_stage(key, P, style, emos, picks, opts).convert("RGB"))
     ANIM_T = None
@@ -712,14 +737,14 @@ def export_animated(key, base, P, style, emos, picks, opts, used):
         if colors == 0:
             if step == 2:
                 break
-            step = 2                       # 장면 수 절반 (0.2초 간격)
+            step = 2                       # 장면 수 절반 (지속시간 합산으로 속도 유지)
             for c2 in (160, 112, 96, 72):
-                data, n = _encode_apng(frames, c2, step)
+                data, n = _encode_apng(frames, durations, c2, step)
                 best = (data, c2, n)
                 if len(data) <= 500 * 1024:
                     break
             break
-        data, n = _encode_apng(frames, colors, step)
+        data, n = _encode_apng(frames, durations, colors, step)
         best = (data, colors, n)
         if len(data) <= 500 * 1024:
             break
