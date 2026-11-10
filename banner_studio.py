@@ -96,10 +96,36 @@ def analyze(im):
     score = 3 - touch * 1.2 - abs(cov - 0.38) * 3
     if cov > 0.85:
         score -= 3
+    if cov < 0.2:          # 소품만 있는 컷(꽃 등) 제외
+        score -= 3
     trim = im.crop(bbox)
     sc = min(1, 120 / max(w, h))
     sample = im.resize((max(1, round(w * sc)), max(1, round(h * sc))))
     return dict(full=im, trim=trim, score=score, sample=sample)
+
+
+def _gif_rep(raw):
+    """GIF 전 장면을 풀어(disposal 포함) 가장 꽉 찬 장면과 초반 등장 여부를 계산.
+    반환: (대표 장면 RGBA 또는 None, 앞 2초 안에 캐릭터가 제대로 안 나오는지)
+    - 첫 장면의 불투명 픽셀 수가 최대 장면의 70% 미만이면 가장 꽉 찬 장면을 대표로 사용
+    - 앞 2초 최대 면적이 전체 최대의 60% 미만이면 늦게 등장하는 것으로 판정"""
+    from PIL import ImageSequence
+    src = Image.open(io.BytesIO(raw))
+    best, best_cnt, first_cnt = None, -1, 0
+    early_max, acc = 0, 0
+    for k, frame in enumerate(ImageSequence.Iterator(src)):
+        fr = frame.convert("RGBA")
+        cnt = sum(fr.split()[3].point(lambda v: 255 if v > 20 else 0).histogram()[128:])
+        if k == 0:
+            first_cnt = cnt
+        if cnt > best_cnt:
+            best, best_cnt = fr, cnt
+        if acc < 2000:
+            early_max = max(early_max, cnt)
+        acc += max(20, int(frame.info.get("duration", 100)))
+    late = best_cnt > 0 and early_max < best_cnt * 0.6
+    rep = best if best_cnt > 0 and first_cnt < best_cnt * 0.7 else None
+    return rep, late
 
 
 def read_zip(data, filename="", max_side=560):
@@ -127,19 +153,22 @@ def read_zip(data, filename="", max_side=560):
     out = []
     for i, (name, base, info) in enumerate(emo):
         raw = zf.read(info)
-        gif_bytes = None
+        gif_bytes, rep, late = None, None, False
         if re.search(r"\.gif$", base, re.I):
             try:
                 probe = Image.open(io.BytesIO(raw))
                 if getattr(probe, "n_frames", 1) > 1:
                     gif_bytes = raw
+                    rep, late = _gif_rep(raw)   # 첫 장면이 비어 있으면 가장 꽉 찬 장면을 대표로
             except Exception:
                 pass
-        im = Image.open(io.BytesIO(raw)).convert("RGBA")
+        im = (rep if rep is not None else Image.open(io.BytesIO(raw))).convert("RGBA")
         if max_side and max(im.size) > max_side:
             k = max_side / max(im.size)
             im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
         d = analyze(im)
+        if late:               # 앞 2초 안에 캐릭터가 제대로 안 나오는 GIF 는 뒤로
+            d["score"] -= 5
         n = num(base)
         d["num"] = i + 1 if n == 9999 else n
         d["gif"] = gif_bytes
@@ -721,9 +750,9 @@ def _encode_apng(frames_rgb, durations, colors, step):
         else:
             ds[-1] += durations[i]
     MEDIANCUT = getattr(getattr(Image, "Quantize", Image), "MEDIANCUT", 0)
-    FS_DITHER = getattr(getattr(Image, "Dither", Image), "FLOYDSTEINBERG", 3)
+    NO_DITHER = getattr(getattr(Image, "Dither", Image), "NONE", 0)
     pal = fs[0].quantize(colors, method=MEDIANCUT)
-    qs = [pal] + [f.quantize(colors, palette=pal, dither=FS_DITHER) for f in fs[1:]]
+    qs = [pal] + [f.quantize(colors, palette=pal, dither=NO_DITHER) for f in fs[1:]]
     buf = io.BytesIO()
     qs[0].save(buf, "PNG", save_all=True, append_images=qs[1:], duration=ds, loop=0,
                optimize=True)
@@ -765,8 +794,8 @@ def _render_timeline(key, P, style, emos, picks, opts, subset, times):
 
 
 def export_animated(key, base, P, style, emos, picks, opts, used):
-    """부드러움(원본 타이밍)을 지키고, 용량이 넘치면 '움직이는 이모티콘 수'를 먼저 줄인다.
-    그래도 넘치면 정지 PNG 로 (500KB 를 절대 넘기지 않음)."""
+    """장면 간격 0.1초 고정(솎지 않음). 용량이 넘치면 색 → 반복 1초 → 작은 아이콘 멈춤 →
+    가운데만 순으로 줄이고, 그래도 넘치면 정지 PNG (500KB 를 절대 넘기지 않음)."""
     for i in used:
         ensure_frames(emos[i])
     S = L[key]
@@ -774,20 +803,20 @@ def export_animated(key, base, P, style, emos, picks, opts, used):
     main = [i for i in used if i in picks[:min(3, n_slots)]]
     hero = [i for i in used if len(picks) > 1 and i == picks[1]]
     full = min(MAX_LOOP, max(emos[i]["frames"]["total"] for i in used))
-    # 줄이는 순서: 색 → 반복 길이 1초 → 메인 이모티콘만 1초 → 가운데만
+    # 줄이는 순서: 색 → 반복 길이 1초 → 작은 아이콘·4번째 멈춤 → 가운데만
     plans = [
         dict(subset=used, cap=MAX_LOOP, label="", colors=(256, 160, 112, 96, 72, 56, 48)),
         dict(subset=used, cap=1000, label="1초 반복", colors=(160, 112, 96, 72, 56, 48)),
-        dict(subset=main, cap=1000, label="배너 이모티콘만 움직임 · 1초 반복",
-             colors=(112, 96, 72, 56, 48)),
+        dict(subset=main, cap=1000, label="배너 이모티콘만 움직임",
+             colors=(112, 96, 72, 56, 48, 40, 32)),
         dict(subset=hero, cap=MAX_LOOP, label="가운데 이모티콘만 움직임", colors=(160, 112, 96, 72)),
     ]
     plans = [p for i, p in enumerate(plans) if p["subset"]
-             and not (i == 1 and full <= 1000)
-             and not (i == 2 and len(p["subset"]) == len(used))]
+             and not (i == 1 and full <= 1000)]
     for plan in plans:
         loop = min(plan["cap"], max(emos[i]["frames"]["total"] for i in plan["subset"]))
-        times, durations = _anim_timeline(emos, plan["subset"], loop, 45)
+        times = list(range(0, max(loop, TICK), TICK))
+        durations = [TICK] * len(times)
         frames = _render_timeline(key, P, style, emos, picks, opts, plan["subset"], times)
         for colors in plan["colors"]:
             data, n = _encode_apng(frames, durations, colors, 1)
