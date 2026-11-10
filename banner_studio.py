@@ -773,19 +773,21 @@ def export_animated(key, base, P, style, emos, picks, opts, used):
     n_slots = len(S.get("slotsHalo", S["slots"]) if style == "halo" else S["slots"])
     main = [i for i in used if i in picks[:min(3, n_slots)]]
     hero = [i for i in used if len(picks) > 1 and i == picks[1]]
+    full = min(MAX_LOOP, max(emos[i]["frames"]["total"] for i in used))
+    # 줄이는 순서: 색 → 반복 길이 1초 → 메인 이모티콘만 1초 → 가운데만
     plans = [
-        dict(subset=used, label="", colors=(256, 160, 112, 96, 72), merge=45),
-        dict(subset=used, label="", colors=(160, 112, 96, 72), merge=90),
-        dict(subset=main, label="배너 이모티콘만 움직임", colors=(160, 112, 96), merge=45),
-        dict(subset=hero, label="가운데 이모티콘만 움직임", colors=(160, 112, 96, 72), merge=45),
+        dict(subset=used, cap=MAX_LOOP, label="", colors=(256, 160, 112, 96, 72, 56, 48)),
+        dict(subset=used, cap=1000, label="1초 반복", colors=(160, 112, 96, 72, 56, 48)),
+        dict(subset=main, cap=1000, label="배너 이모티콘만 움직임 · 1초 반복",
+             colors=(112, 96, 72, 56, 48)),
+        dict(subset=hero, cap=MAX_LOOP, label="가운데 이모티콘만 움직임", colors=(160, 112, 96, 72)),
     ]
-    seen = []
-    plans = [p for p in plans if p["subset"] and not (
-        (tuple(p["subset"]), p["merge"]) in seen or seen.append((tuple(p["subset"]), p["merge"])))]
-    # 같은 subset 의 더 성긴 단계는 subset 이 줄어드는 단계보다 먼저 시도됨 (위 순서 그대로)
+    plans = [p for i, p in enumerate(plans) if p["subset"]
+             and not (i == 1 and full <= 1000)
+             and not (i == 2 and len(p["subset"]) == len(used))]
     for plan in plans:
-        loop = min(MAX_LOOP, max(emos[i]["frames"]["total"] for i in plan["subset"]))
-        times, durations = _anim_timeline(emos, plan["subset"], loop, plan["merge"])
+        loop = min(plan["cap"], max(emos[i]["frames"]["total"] for i in plan["subset"]))
+        times, durations = _anim_timeline(emos, plan["subset"], loop, 45)
         frames = _render_timeline(key, P, style, emos, picks, opts, plan["subset"], times)
         for colors in plan["colors"]:
             data, n = _encode_apng(frames, durations, colors, 1)
