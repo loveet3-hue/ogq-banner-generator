@@ -66,7 +66,9 @@ with tab_banner:
 
     if sd:
         emos, default_name = sd["emos"], sd["name"]
-        st.success(f"**{default_name}** · 이모티콘 {len(emos)}개")
+        n_gif = sum(1 for e in emos if e.get("gif"))
+        st.success(f"**{default_name}** · 이모티콘 {len(emos)}개"
+                   + (f" · 움직이는 GIF {n_gif}개" if n_gif else ""))
         with st.expander("🔢 이모티콘 번호 보기 (시안에서 번호로 지정할 때 참고)"):
             cols = st.columns(8)
             for i, e in enumerate(emos):
@@ -86,6 +88,14 @@ with tab_banner:
                 with cc2:
                     creator_in = st.text_input("크리에이터명 (인스타)", placeholder="예) 아지그림")
                 footer_in = st.text_input("인스타 하단 문구", value="OGQ마켓 *출시!*")
+
+            if n_gif:
+                anim_on = st.checkbox("GIF 이모티콘은 움직이는 PNG(APNG)로", value=True,
+                                      help=f"움직이는 GIF {n_gif}개를 찾았어요. SOM·NOM·COM에 적용되고, "
+                                           "용량은 500KB 아래로 자동으로 맞춰요.")
+            else:
+                anim_on = False
+                st.caption("이 zip에는 움직이는 GIF가 없어서 일반 PNG로 만들어요.")
 
             st.markdown("**만들 지면**")
             t1, t2, t3, t4 = st.columns(4)
@@ -130,8 +140,12 @@ with tab_banner:
                 chat=(chat_in.strip() or f"{name_in.strip() or default_name} 이모티콘 *출시*"),
                 tagline=tag_in.strip(), creator=creator_in.strip(), footer=footer_in.strip())
             prog = st.progress(0, text="배너 그리는 중...")
-            res = bst.generate(emos, opts, variants, targets,
-                               progress=lambda k, n: prog.progress(k / n, text=f"시안 {k + 1}/{n} 그리는 중..."))
+
+            def _prog(k, n, msg):
+                label = f"시안 {k + 1}/{n} · {msg}..." if msg else f"시안 {k + 1}/{n} 그리는 중..."
+                prog.progress(min(0.99, k / n), text=label)
+
+            res = bst.generate(emos, opts, variants, targets, progress=_prog, anim=anim_on)
             prog.empty()
             safe = re.sub(r"[^0-9A-Za-z가-힣]+", "_", opts["name"].replace("*", "")).strip("_") or "emoticon"
             st.session_state["studio_res"] = {"res": res, "base": safe}
@@ -162,7 +176,8 @@ with tab_banner:
                                    mime="application/zip", key=f"studio_{r['label']}")
                 for f in r["files"]:
                     kb = len(f["data"]) // 1024
-                    st.image(f["data"], caption=f"{f['name']} · {f['w']}×{f['h']} · {kb}KB",
+                    badge = f" · 🎞 움직임 {f['anim']['sec']}초" if f.get("anim") else ""
+                    st.image(f["data"], caption=f"{f['name']} · {f['w']}×{f['h']} · {kb}KB{badge}",
                              use_container_width=(f["w"] > 700))
 
 

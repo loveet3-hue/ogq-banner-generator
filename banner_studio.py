@@ -126,13 +126,24 @@ def read_zip(data, filename="", max_side=560):
         raise ValueError("zip 안에서 이모티콘 이미지(png/gif)를 찾지 못했어요.")
     out = []
     for i, (name, base, info) in enumerate(emo):
-        im = Image.open(io.BytesIO(zf.read(info))).convert("RGBA")
+        raw = zf.read(info)
+        gif_bytes = None
+        if re.search(r"\.gif$", base, re.I):
+            try:
+                probe = Image.open(io.BytesIO(raw))
+                if getattr(probe, "n_frames", 1) > 1:
+                    gif_bytes = raw
+            except Exception:
+                pass
+        im = Image.open(io.BytesIO(raw)).convert("RGBA")
         if max_side and max(im.size) > max_side:
             k = max_side / max(im.size)
             im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
         d = analyze(im)
         n = num(base)
         d["num"] = i + 1 if n == 9999 else n
+        d["gif"] = gif_bytes
+        d["frames"] = None
         out.append(d)
     name = re.sub(r"\.zip$", "", filename, flags=re.I)
     name = re.sub(r"^[0-9a-f]{8}-", "", name)
@@ -214,6 +225,82 @@ def custom_palette(hexcol):
         return "#%02X%02X%02X" % (round(rr * 255), round(gg * 255), round(bb * 255))
     return dict(bg=hexcol, sh=hex_rgb(hls_hex(h, 0.45, min(1, s + .2))), accent=hls_hex(h, 0.5, 0.75),
                 ink="#2B2B33", deco="#FFFFFF", label=hexcol)
+
+
+# ---------------------------------------------------------------- 움직이는 장면(APNG)
+ANIM_T = None            # 그리는 중인 시점(ms). None 이면 정지 이미지
+FRAME_SCALE = 0.6
+TICK = 100               # 장면 간격(ms)
+MAX_LOOP = 2000          # 최대 루프 길이(ms)
+
+
+def view(emo):
+    """ANIM_T 시점의 프레임으로 바꾼 emo (정지면 그대로)"""
+    if ANIM_T is None or not emo.get("frames"):
+        return emo
+    f = emo["frames"]
+    t = ANIM_T % f["total"]
+    acc = 0
+    fr = f["list"][-1]
+    for cand in f["list"]:
+        acc += cand["delay"]
+        if t < acc:
+            fr = cand
+            break
+    e2 = dict(emo)
+    e2["full"], e2["trim"] = fr["full"], fr["trim"]
+    return e2
+
+
+def ensure_frames(emo):
+    """GIF 전 장면을 풀어 공통 영역으로 잘라 축소 보관 (HTML ensureFrames 동일)"""
+    if emo.get("frames") or not emo.get("gif"):
+        return
+    from PIL import ImageSequence
+    src = Image.open(io.BytesIO(emo["gif"]))
+    W, H = src.size
+    raws = []
+    bbox = None
+    for frame in ImageSequence.Iterator(src):
+        fr = frame.convert("RGBA")
+        delay = max(20, int(frame.info.get("duration", 100)))
+        a = fr.split()[3].point(lambda v: 255 if v > 20 else 0)
+        b = a.getbbox()
+        if b:
+            bbox = b if bbox is None else (min(bbox[0], b[0]), min(bbox[1], b[1]),
+                                           max(bbox[2], b[2]), max(bbox[3], b[3]))
+        raws.append((fr, delay))
+    if bbox is None:
+        bbox = (0, 0, W, H)
+    sc = FRAME_SCALE
+    fw, fh = max(1, round(W * sc)), max(1, round(H * sc))
+    lst, total = [], 0
+    for fr, delay in raws:
+        crop = fr.crop(bbox)
+        crop = crop.resize((max(1, round(crop.width * sc)), max(1, round(crop.height * sc))), Image.LANCZOS)
+        full = Image.new("RGBA", (fw, fh), (0, 0, 0, 0))
+        full.alpha_composite(crop, (round(bbox[0] * sc), round(bbox[1] * sc)))
+        lst.append(dict(delay=delay, full=full, trim=crop))
+        total += delay
+    emo["frames"] = dict(list=lst, total=total)
+
+
+def release_frames(emos):
+    for e in emos:
+        e["frames"] = None
+
+
+def used_indexes(key, style, picks, icons):
+    S = L[key]
+    n = len(S.get("slotsHalo", S["slots"]) if style == "halo" else S["slots"])
+    u = list(picks[:n])
+    if key == "chat":
+        u += icons[:2]
+    seen = []
+    for i in u:
+        if i not in seen:
+            seen.append(i)
+    return seen
 
 
 # ---------------------------------------------------------------- 그리기 도구
@@ -517,7 +604,7 @@ def render_stage(key, P, style, emos, picks, opts):
     for i, (X, Y, s, r) in enumerate(slots):
         if i >= len(picks):
             break
-        emo = emos[picks[i]]
+        emo = view(emos[picks[i]])
         if style == "halo":
             s = min(s, h - 16)
             Y = max(8, min(Y, h - s - 8))
@@ -532,7 +619,7 @@ def render_stage(key, P, style, emos, picks, opts):
         fs = fit_size(segs, 56, 690)
         tw = rich_width(segs, fs)
         ic_h, gap = 84, 12
-        ic = [emos[i] for i in opts.get("icons", []) if i < len(emos)]
+        ic = [view(emos[i]) for i in opts.get("icons", []) if i < len(emos)]
         icw = [min(110, e["trim"].width * ic_h / e["trim"].height) for e in ic]
         total = tw + sum(icw) + gap * len(icw)
         left = w / 2 - total / 2
@@ -595,6 +682,51 @@ def render_insta(P, style, emos, picks, opts):
     return img
 
 
+def _encode_apng(frames_rgb, colors, step):
+    """프레임(RGB)들을 공통 팔레트로 양자화해 APNG 인코딩"""
+    fs = frames_rgb[::step]
+    pal = fs[0].quantize(colors, method=Image.MEDIANCUT)
+    qs = [pal] + [f.quantize(colors, palette=pal, dither=Image.FLOYDSTEINBERG) for f in fs[1:]]
+    buf = io.BytesIO()
+    qs[0].save(buf, "PNG", save_all=True, append_images=qs[1:], duration=TICK * step, loop=0,
+               optimize=True)
+    return buf.getvalue(), len(fs)
+
+
+def export_animated(key, base, P, style, emos, picks, opts, used):
+    """사용된 GIF 들의 길이에 맞춰 장면을 다시 그려 APNG 로 (HTML exportAnimated 동일)"""
+    global ANIM_T
+    for i in used:
+        ensure_frames(emos[i])
+    loop = min(MAX_LOOP, max(emos[i]["frames"]["total"] for i in used))
+    frames = []
+    for t in range(0, loop, TICK):
+        ANIM_T = t
+        frames.append(render_stage(key, P, style, emos, picks, opts).convert("RGB"))
+    ANIM_T = None
+    best = None
+    step = 1
+    for colors in (256, 160, 112, 96, 72, 56, 0):
+        if colors == 0:
+            if step == 2:
+                break
+            step = 2                       # 장면 수 절반 (0.2초 간격)
+            for c2 in (160, 112, 96, 72):
+                data, n = _encode_apng(frames, c2, step)
+                best = (data, c2, n)
+                if len(data) <= 500 * 1024:
+                    break
+            break
+        data, n = _encode_apng(frames, colors, step)
+        best = (data, colors, n)
+        if len(data) <= 500 * 1024:
+            break
+    data, colors, n = best
+    S = L[key]
+    return dict(name=f"{base}.png", data=data, w=S["w"], h=S["h"],
+                anim=dict(sec=round(loop / 1000, 1), colors=colors, frames=n))
+
+
 # ---------------------------------------------------------------- 내보내기·생성
 def export(img, base):
     img = img.convert("RGB")
@@ -611,14 +743,15 @@ def export(img, base):
     return dict(name=f"{base}.{ext}", data=buf.getvalue(), w=img.width, h=img.height)
 
 
-def generate(emos, opts, variants, targets, progress=lambda *a: None):
-    """variants: [{on, style, color, hex, pick(번호), icons(번호)}] → 결과 리스트"""
+def generate(emos, opts, variants, targets, progress=lambda *a: None, anim=True):
+    """variants: [{on, style, color, hex, pick(번호), icons(번호)}] → 결과 리스트
+    anim=True 면 GIF 가 쓰인 SOM·NOM·COM 배너를 움직이는 PNG(APNG)로 만든다."""
     num2idx = {e["num"]: i for i, e in enumerate(emos)}
     results = []
     base_pal = None
     vs = [v for v in variants if v.get("on", True)] or [dict(style="card", color="auto", pick=[], icons=[])]
     for k, v in enumerate(vs):
-        progress(k, len(vs))
+        progress(k, len(vs), None)
         ap, ai = auto_picks(emos, k)
         picks = [num2idx[n] for n in v.get("pick", []) if n in num2idx]
         for i in ap:
@@ -638,9 +771,16 @@ def generate(emos, opts, variants, targets, progress=lambda *a: None):
         files = []
         for t in targets:
             for key, fname in TARGETS[t]:
-                img = render_insta(P, v["style"], emos, picks, o) if key == "insta" \
-                    else render_stage(key, P, v["style"], emos, picks, o)
-                files.append(dict(export(img, fname), target=t))
+                used = [] if key == "insta" else [i for i in used_indexes(key, v["style"], picks, icons)
+                                                  if emos[i].get("gif")]
+                if anim and used:
+                    progress(k, len(vs), f"{fname.split('_')[0]} 움직이는 PNG 만드는 중")
+                    files.append(dict(export_animated(key, fname, P, v["style"], emos, picks, o, used), target=t))
+                else:
+                    img = render_insta(P, v["style"], emos, picks, o) if key == "insta" \
+                        else render_stage(key, P, v["style"], emos, picks, o)
+                    files.append(dict(export(img, fname), target=t))
+        release_frames(emos)
         results.append(dict(label=f"시안 {k + 1}", style=v["style"], pname=pname,
                             pal_label=P["label"], bg=P["bg"],
                             pick=[emos[i]["num"] for i in picks], icons=[emos[i]["num"] for i in icons],
