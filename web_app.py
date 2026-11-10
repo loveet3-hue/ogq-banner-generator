@@ -90,12 +90,39 @@ with tab_banner:
                 footer_in = st.text_input("인스타 하단 문구", value="OGQ마켓 *출시!*")
 
             if n_gif:
-                anim_on = st.checkbox("GIF 이모티콘은 움직이는 PNG(APNG)로", value=True,
-                                      help=f"움직이는 GIF {n_gif}개를 찾았어요. SOM·NOM·COM에 적용되고, "
-                                           "용량은 500KB 아래로 자동으로 맞춰요.")
+                ac1, ac2 = st.columns(2)
+                with ac1:
+                    anim_on = st.checkbox("GIF 이모티콘은 움직이는 PNG(APNG)로", value=True,
+                                          help=f"움직이는 GIF {n_gif}개를 찾았어요. SOM·NOM·COM에 적용되고, "
+                                               "용량이 넘치면 움직이는 이모티콘 수를 줄여 500KB를 맞춰요.")
+                with ac2:
+                    vid_on = st.checkbox("카드뉴스 움직이는 GIF도 만들기", value=True,
+                                         help="인스타 카드뉴스를 선택했을 때, 모든 GIF 이모티콘이 움직이는 "
+                                              ".gif 파일을 추가로 만들어요 (용량 제한 없음)")
             else:
                 anim_on = False
+                vid_on = False
                 st.caption("이 zip에는 움직이는 GIF가 없어서 일반 PNG로 만들어요.")
+
+            with st.expander("✥ 문구 위치 · 크기 조절 (COM · 인스타)"):
+                st.caption("기본값(0, 100%)이면 자동 배치입니다. 문구를 옮기거나 키우고 싶을 때만 조절하세요.")
+                tcol1, tcol2, tcol3 = st.columns(3)
+                text_opts = {}
+                with tcol1:
+                    st.markdown("**COM 문구**")
+                    text_opts["cX"] = st.slider("좌우 이동", -300, 300, 0, 10, key="txcX")
+                    text_opts["cY"] = st.slider("위아래 이동", -300, 300, 0, 10, key="txcY")
+                    text_opts["cS"] = st.slider("크기 %", 60, 130, 100, 2, key="txcS")
+                with tcol2:
+                    st.markdown("**인스타 제목**")
+                    text_opts["itX"] = st.slider("좌우 이동", -300, 300, 0, 10, key="txitX")
+                    text_opts["itY"] = st.slider("위아래 이동", -200, 200, 0, 10, key="txitY")
+                    text_opts["itS"] = st.slider("크기 %", 60, 140, 100, 2, key="txitS")
+                with tcol3:
+                    st.markdown("**인스타 하단**")
+                    text_opts["ifX"] = st.slider("좌우 이동", -300, 300, 0, 10, key="txifX")
+                    text_opts["ifY"] = st.slider("위아래 이동", -60, 60, 0, 5, key="txifY")
+                    text_opts["ifS"] = st.slider("크기 %", 60, 130, 100, 2, key="txifS")
 
             st.markdown("**만들 지면**")
             t1, t2, t3, t4 = st.columns(4)
@@ -138,7 +165,8 @@ with tab_banner:
             opts = dict(
                 name=(name_in.strip() or default_name),
                 chat=(chat_in.strip() or f"{name_in.strip() or default_name} 이모티콘 *출시*"),
-                tagline=tag_in.strip(), creator=creator_in.strip(), footer=footer_in.strip())
+                tagline=tag_in.strip(), creator=creator_in.strip(), footer=footer_in.strip(),
+                text=text_opts)
             prog = st.progress(0, text="배너 그리는 중...")
 
             def _prog(k, n, msg):
@@ -146,7 +174,7 @@ with tab_banner:
                 prog.progress(min(0.99, k / n), text=label)
 
             try:
-                res = bst.generate(emos, opts, variants, targets, progress=_prog, anim=anim_on)
+                res = bst.generate(emos, opts, variants, targets, progress=_prog, anim=anim_on, vid=vid_on)
             except Exception:
                 import traceback
                 prog.empty()
@@ -184,7 +212,8 @@ with tab_banner:
                 for f in r["files"]:
                     kb = len(f["data"]) // 1024
                     badge = f" · 🎞 움직임 {f['anim']['sec']}초" if f.get("anim") else ""
-                    st.image(f["data"], caption=f"{f['name']} · {f['w']}×{f['h']} · {kb}KB{badge}",
+                    note = f" · {f['note']}" if f.get("note") else ""
+                    st.image(f["data"], caption=f"{f['name']} · {f['w']}×{f['h']} · {kb}KB{badge}{note}",
                              use_container_width=(f["w"] > 700))
 
 

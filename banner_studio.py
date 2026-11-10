@@ -229,14 +229,19 @@ def custom_palette(hexcol):
 
 # ---------------------------------------------------------------- 움직이는 장면(APNG)
 ANIM_T = None            # 그리는 중인 시점(ms). None 이면 정지 이미지
-FRAME_SCALE = 0.6
+FRAME_SCALE = 0.5
 TICK = 100               # 장면 간격(ms)
 MAX_LOOP = 2000          # 최대 루프 길이(ms)
+
+
+ANIM_SET = None   # 움직이게 할 이모티콘 id 집합. None 이면 전부
 
 
 def view(emo):
     """ANIM_T 시점의 프레임으로 바꾼 emo (정지면 그대로)"""
     if ANIM_T is None or not emo.get("frames"):
+        return emo
+    if ANIM_SET is not None and id(emo) not in ANIM_SET:
         return emo
     f = emo["frames"]
     t = ANIM_T % f["total"]
@@ -590,6 +595,15 @@ def draw_pill(img, text, cx, top, fs, pad_y, pad_x, bg, fg, P, pipe_color=None):
         x += f.getlength(ch) + 1
 
 
+TEXT_DEFAULT = dict(cX=0, cY=0, cS=100, itX=0, itY=0, itS=100, ifX=0, ifY=0, ifS=100)
+
+
+def _text(opts):
+    t = dict(TEXT_DEFAULT)
+    t.update(opts.get("text") or {})
+    return t
+
+
 # ---------------------------------------------------------------- 지면 그리기
 def render_stage(key, P, style, emos, picks, opts):
     S = L[key]
@@ -613,17 +627,22 @@ def render_stage(key, P, style, emos, picks, opts):
             card = make_card(s, r, emo, P)
             paste_sprite(img, card, X - (card.width - s) / 2, Y - (card.height - s) / 2, P["sh"])
     if key == "chat":
+        T = _text(opts)
+        sc = T["cS"] / 100
+        dx, dy = T["cX"], T["cY"]
+        pill_top = 358 + dy - (sc - 1) * 30
         if opts.get("tagline"):
-            draw_pill(img, opts["tagline"], w / 2, 358, 24, 6, 20, P["accent"], (255, 255, 255), P)
+            draw_pill(img, opts["tagline"], w / 2 + dx, pill_top, round(24 * max(.8, sc)), 6, 20,
+                      P["accent"], (255, 255, 255), P)
         segs = segments(opts["chat"])
-        fs = fit_size(segs, 56, 690)
+        fs = fit_size(segs, round(56 * sc), 690 + max(0, sc - 1) * 300)
         tw = rich_width(segs, fs)
-        ic_h, gap = 84, 12
+        ic_h, gap = round(84 * sc), 12
         ic = [view(emos[i]) for i in opts.get("icons", []) if i < len(emos)]
-        icw = [min(110, e["trim"].width * ic_h / e["trim"].height) for e in ic]
+        icw = [min(110 * sc, e["trim"].width * ic_h / e["trim"].height) for e in ic]
         total = tw + sum(icw) + gap * len(icw)
-        left = w / 2 - total / 2
-        cy = 450
+        left = w / 2 + dx - total / 2
+        cy = 450 + dy
         if ic:
             draw_char(img, ic[0], left + icw[0] / 2, cy + ic_h / 2, icw[0], ic_h, 0, P, 2)
             left += icw[0] + gap
@@ -648,11 +667,18 @@ def render_insta(P, style, emos, picks, opts):
     if len(picks) > 2:
         draw_char(img, emos[picks[2]], 950, head, 260, 240, 4, P)
     # 머리 영역 밖으로 번진 캐릭터는 그대로 (JS 도 clip 안에서 그려 살짝 잘림) → head 아래 잘라줌
+    T = _text(opts)
     segs = segments(opts["name"])
-    fs = fit_size(segs, 128, 560, 3)
-    draw_rich(img, segs, W / 2, 42 + fs * 0.55, fs, 16, P, fs * 0.03)
+    fs = fit_size(segs, round(128 * T["itS"] / 100), 560 + max(0, T["itS"] - 100) * 3, 3)
+    pill_h = (28 * 1.2 + 20) if opts.get("creator") else 0
+    gap_p = 22 if opts.get("creator") else 0
+    block_h = fs * 1.0 + gap_p + pill_h
+    top = (head - block_h) / 2 - 6 + T["itY"]
+    tcx = W / 2 + T["itX"]
+    draw_rich(img, segs, tcx, top + fs * 0.5, fs, max(10, 16 * fs / 128), P, fs * 0.03)
     if opts.get("creator"):
-        draw_pill(img, f"크리에이터 | {opts['creator']}", W / 2, 236, 28, 10, 28, P["ink"], (255, 255, 255), P, P["bg"])
+        draw_pill(img, f"크리에이터 | {opts['creator']}", tcx, top + fs + gap_p, 28, 10, 28,
+                  P["ink"], (255, 255, 255), P, P["bg"])
     # 그리드
     n = len(emos)
     cols = 4
@@ -661,7 +687,8 @@ def render_insta(P, style, emos, picks, opts):
     gh = (H - foot - 18) - gy
     cg, rg = 22, 10
     cw, ch = (gw - cg * (cols - 1)) / cols, (gh - rg * (rows - 1)) / rows
-    for i, e in enumerate(emos):
+    for i, e0 in enumerate(emos):
+        e = view(e0)
         X = gx + (i % cols) * (cw + cg)
         Y = gy + (i // cols) * (ch + rg)
         cell = Image.new("RGBA", (int(cw), int(ch)), (0, 0, 0, 0))
@@ -677,8 +704,9 @@ def render_insta(P, style, emos, picks, opts):
     d.rectangle([0, H - foot, W, H], fill=hex_rgb(P["bg"]) + (255,))
     fsegs = segments(opts.get("footer") or "")
     if fsegs:
-        ffs = fit_size(fsegs, 80, 900, 3)
-        draw_rich(img, fsegs, W / 2, H - foot / 2, ffs, 14, P, ffs * 0.03)
+        ffs = fit_size(fsegs, round(80 * T["ifS"] / 100), 900, 3)
+        draw_rich(img, fsegs, W / 2 + T["ifX"], H - foot / 2 + T["ifY"], ffs,
+                  max(8, 14 * ffs / 80), P, ffs * 0.03)
     return img
 
 
@@ -702,16 +730,11 @@ def _encode_apng(frames_rgb, durations, colors, step):
     return buf.getvalue(), len(fs)
 
 
-def export_animated(key, base, P, style, emos, picks, opts, used):
-    """사용된 GIF 들의 '실제 프레임 전환 시각'마다 장면을 그려 APNG 로.
-    고정 간격 샘플링이 아니라 원본 delay 를 따르므로 재생 속도가 그대로 보존된다."""
-    global ANIM_T
-    for i in used:
-        ensure_frames(emos[i])
-    loop = min(MAX_LOOP, max(emos[i]["frames"]["total"] for i in used))
-    # 전환 시각 수집 (루프 안에서 각 GIF 가 프레임을 바꾸는 모든 순간)
+def _anim_timeline(emos, subset, loop, merge=45):
+    """subset(emo 인덱스)의 실제 프레임 전환 시각 → (times, durations).
+    merge: 이보다 짧은 간격은 병합(값이 클수록 장면 수가 줄어 용량이 작아짐)"""
     events = {0}
-    for i in used:
+    for i in subset:
         f = emos[i]["frames"]
         acc = 0
         while acc < loop:
@@ -722,36 +745,81 @@ def export_animated(key, base, P, style, emos, picks, opts, used):
                 events.add(acc)
     times = [0]
     for t in sorted(events):
-        if t - times[-1] >= 45:        # 45ms 미만 간격은 병합 (용량 보호)
+        if t - times[-1] >= merge:
             times.append(t)
     durations = [times[i + 1] - times[i] for i in range(len(times) - 1)]
     durations.append(max(20, loop - times[-1]))
+    return times, durations
+
+
+def _render_timeline(key, P, style, emos, picks, opts, subset, times):
+    global ANIM_T, ANIM_SET
+    ANIM_SET = {id(emos[i]) for i in subset}
     frames = []
     for t in times:
         ANIM_T = t
         frames.append(render_stage(key, P, style, emos, picks, opts).convert("RGB"))
     ANIM_T = None
-    best = None
-    step = 1
-    for colors in (256, 160, 112, 96, 72, 56, 0):
-        if colors == 0:
-            if step == 2:
-                break
-            step = 2                       # 장면 수 절반 (지속시간 합산으로 속도 유지)
-            for c2 in (160, 112, 96, 72):
-                data, n = _encode_apng(frames, durations, c2, step)
-                best = (data, c2, n)
-                if len(data) <= 500 * 1024:
-                    break
-            break
-        data, n = _encode_apng(frames, durations, colors, step)
-        best = (data, colors, n)
-        if len(data) <= 500 * 1024:
-            break
-    data, colors, n = best
+    ANIM_SET = None
+    return frames
+
+
+def export_animated(key, base, P, style, emos, picks, opts, used):
+    """부드러움(원본 타이밍)을 지키고, 용량이 넘치면 '움직이는 이모티콘 수'를 먼저 줄인다.
+    그래도 넘치면 정지 PNG 로 (500KB 를 절대 넘기지 않음)."""
+    for i in used:
+        ensure_frames(emos[i])
     S = L[key]
-    return dict(name=f"{base}.png", data=data, w=S["w"], h=S["h"],
-                anim=dict(sec=round(loop / 1000, 1), colors=colors, frames=n))
+    n_slots = len(S.get("slotsHalo", S["slots"]) if style == "halo" else S["slots"])
+    main = [i for i in used if i in picks[:min(3, n_slots)]]
+    hero = [i for i in used if len(picks) > 1 and i == picks[1]]
+    plans = [
+        dict(subset=used, label="", colors=(256, 160, 112, 96, 72), merge=45),
+        dict(subset=used, label="", colors=(160, 112, 96, 72), merge=90),
+        dict(subset=main, label="배너 이모티콘만 움직임", colors=(160, 112, 96), merge=45),
+        dict(subset=hero, label="가운데 이모티콘만 움직임", colors=(160, 112, 96, 72), merge=45),
+    ]
+    seen = []
+    plans = [p for p in plans if p["subset"] and not (
+        (tuple(p["subset"]), p["merge"]) in seen or seen.append((tuple(p["subset"]), p["merge"])))]
+    # 같은 subset 의 더 성긴 단계는 subset 이 줄어드는 단계보다 먼저 시도됨 (위 순서 그대로)
+    for plan in plans:
+        loop = min(MAX_LOOP, max(emos[i]["frames"]["total"] for i in plan["subset"]))
+        times, durations = _anim_timeline(emos, plan["subset"], loop, plan["merge"])
+        frames = _render_timeline(key, P, style, emos, picks, opts, plan["subset"], times)
+        for colors in plan["colors"]:
+            data, n = _encode_apng(frames, durations, colors, 1)
+            if len(data) <= 500 * 1024:
+                return dict(name=f"{base}.png", data=data, w=S["w"], h=S["h"],
+                            anim=dict(sec=round(loop / 1000, 1), colors=colors, frames=n),
+                            note=plan["label"])
+    # 전부 넘치면 정지 이미지로
+    img = render_stage(key, P, style, emos, picks, opts)
+    return dict(export(img, base), note="용량 제한 때문에 정지 이미지로 저장")
+
+
+def export_insta_gif(base, P, style, emos, picks, opts, progress=lambda m: None):
+    """카드뉴스(1080x1350) 움직이는 GIF — 모든 GIF 이모티콘이 움직임, 용량 제한 없음"""
+    global ANIM_T
+    gifs = [i for i, e in enumerate(emos) if e.get("gif")]
+    for i in gifs:
+        ensure_frames(emos[i])
+    loop = min(MAX_LOOP, max(emos[i]["frames"]["total"] for i in gifs))
+    times, durations = _anim_timeline(emos, gifs, loop)
+    frames = []
+    for k, t in enumerate(times):
+        ANIM_T = t
+        frames.append(render_insta(P, style, emos, picks, opts).convert("RGB"))
+        progress(f"{round((k + 1) / len(times) * 100)}%")
+    ANIM_T = None
+    MEDIANCUT = getattr(getattr(Image, "Quantize", Image), "MEDIANCUT", 0)
+    pal = frames[0].quantize(255, method=MEDIANCUT)
+    qs = [pal] + [f.quantize(255, palette=pal) for f in frames[1:]]
+    buf = io.BytesIO()
+    qs[0].save(buf, "GIF", save_all=True, append_images=qs[1:], duration=durations, loop=0,
+               optimize=True, disposal=1)
+    return dict(name=f"{base}.gif", data=buf.getvalue(), w=1080, h=1350, gif=True,
+                anim=dict(sec=round(loop / 1000, 1)), note="인스타에선 첫 장면으로 보여요")
 
 
 # ---------------------------------------------------------------- 내보내기·생성
@@ -770,9 +838,10 @@ def export(img, base):
     return dict(name=f"{base}.{ext}", data=buf.getvalue(), w=img.width, h=img.height)
 
 
-def generate(emos, opts, variants, targets, progress=lambda *a: None, anim=True):
+def generate(emos, opts, variants, targets, progress=lambda *a: None, anim=True, vid=False):
     """variants: [{on, style, color, hex, pick(번호), icons(번호)}] → 결과 리스트
-    anim=True 면 GIF 가 쓰인 SOM·NOM·COM 배너를 움직이는 PNG(APNG)로 만든다."""
+    anim=True 면 GIF 가 쓰인 SOM·NOM·COM 배너를 움직이는 PNG(APNG)로,
+    vid=True 면 인스타 카드뉴스의 움직이는 GIF 도 함께 만든다."""
     num2idx = {e["num"]: i for i, e in enumerate(emos)}
     results = []
     base_pal = None
@@ -807,6 +876,9 @@ def generate(emos, opts, variants, targets, progress=lambda *a: None, anim=True)
                     img = render_insta(P, v["style"], emos, picks, o) if key == "insta" \
                         else render_stage(key, P, v["style"], emos, picks, o)
                     files.append(dict(export(img, fname), target=t))
+                if key == "insta" and vid and any(e.get("gif") for e in emos):
+                    progress(k, len(vs), "카드뉴스 움직이는 GIF 만드는 중")
+                    files.append(dict(export_insta_gif(fname, P, v["style"], emos, picks, o), target=t))
         release_frames(emos)
         results.append(dict(label=f"시안 {k + 1}", style=v["style"], pname=pname,
                             pal_label=P["label"], bg=P["bg"],
