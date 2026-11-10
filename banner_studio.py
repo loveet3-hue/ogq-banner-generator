@@ -115,7 +115,11 @@ def _gif_rep(raw):
     early_max, acc = 0, 0
     for k, frame in enumerate(ImageSequence.Iterator(src)):
         fr = frame.convert("RGBA")
-        cnt = sum(fr.split()[3].point(lambda v: 255 if v > 20 else 0).histogram()[128:])
+        a = fr.split()[3]
+        if max(a.size) > 128:   # 비율 판정용이라 축소해서 셈 (속도)
+            a = a.resize((max(1, a.width * 128 // max(a.size)),
+                          max(1, a.height * 128 // max(a.size))))
+        cnt = sum(a.point(lambda v: 255 if v > 20 else 0).histogram()[128:])
         if k == 0:
             first_cnt = cnt
         if cnt > best_cnt:
@@ -460,11 +464,16 @@ def draw_deco(img, kind, X, Y, s, P):
 
 
 def _shadow_of(sprite, color, alpha, blur, dy):
+    key = ("sh", id(sprite), tuple(color), alpha, blur)
+    if _SPRITE_CACHE is not None and key in _SPRITE_CACHE:
+        return _SPRITE_CACHE[key], dy
     a = sprite.split()[3]
     sh = Image.new("RGBA", sprite.size, tuple(color) + (0,))
     sh.putalpha(a.point(lambda v: int(v * alpha)))
     if blur:
         sh = sh.filter(ImageFilter.GaussianBlur(blur))
+    if _SPRITE_CACHE is not None:
+        _SPRITE_CACHE[key] = sh
     return sh, dy
 
 
@@ -474,8 +483,20 @@ def paste_sprite(img, sprite, x, y, sh_color, sh_alpha=0.22, blur=13, dy=12):
     img.alpha_composite(sprite, (int(x), int(y)))
 
 
+_SPRITE_CACHE = None   # 프레임 시퀀스 렌더 동안만 dict 로 켜짐 (카드·그림자 재사용)
+
+
 def make_card(s, rot, emo, P):
     """흰 스티커 카드 + 이모티콘 (회전 포함 스프라이트)"""
+    if _SPRITE_CACHE is None:
+        return _make_card(s, rot, emo, P)
+    key = ("card", id(emo["full"]), round(s), rot, P["accent"])
+    if key not in _SPRITE_CACHE:
+        _SPRITE_CACHE[key] = _make_card(s, rot, emo, P)
+    return _SPRITE_CACHE[key]
+
+
+def _make_card(s, rot, emo, P):
     S = int(s * SS)
     card = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(card)
@@ -503,6 +524,15 @@ def make_card(s, rot, emo, P):
 
 
 def outlined_char(emo, max_w, max_h, o=3):
+    if _SPRITE_CACHE is not None:
+        key = ("char", id(emo["trim"]), round(max_w), round(max_h), o)
+        if key not in _SPRITE_CACHE:
+            _SPRITE_CACHE[key] = _outlined_char(emo, max_w, max_h, o)
+        return _SPRITE_CACHE[key]
+    return _outlined_char(emo, max_w, max_h, o)
+
+
+def _outlined_char(emo, max_w, max_h, o=3):
     im = emo["trim"]
     k = min(max_w / im.width, max_h / im.height)
     w, h = max(1, int(im.width * k)), max(1, int(im.height * k))
@@ -634,15 +664,27 @@ def _text(opts):
 
 
 # ---------------------------------------------------------------- 지면 그리기
-def render_stage(key, P, style, emos, picks, opts):
+def _stage_base(key, P, style):
+    """프레임 간 동일한 배경(바탕색+패턴+글로우+장식) — 시퀀스 렌더 중에는 캐시"""
+    bkey = ("base", key, style, id(P))
+    if _SPRITE_CACHE is not None and bkey in _SPRITE_CACHE:
+        return _SPRITE_CACHE[bkey].copy()
     S = L[key]
-    w, h = S["w"], S["h"]
-    img = Image.new("RGBA", (w, h), hex_rgb(P["bg"]) + (255,))
+    img = Image.new("RGBA", (S["w"], S["h"]), hex_rgb(P["bg"]) + (255,))
     draw_pattern(img, style, S.get("mask"))
     for g in S["glow"]:
         draw_glow(img, *g)
     for dk in S["deco"]:
         draw_deco(img, dk[0], dk[1], dk[2], dk[3], P)
+    if _SPRITE_CACHE is not None:
+        _SPRITE_CACHE[bkey] = img.copy()
+    return img
+
+
+def render_stage(key, P, style, emos, picks, opts):
+    S = L[key]
+    w, h = S["w"], S["h"]
+    img = _stage_base(key, P, style)
     slots = S.get("slotsHalo", S["slots"]) if style == "halo" else S["slots"]
     for i, (X, Y, s, r) in enumerate(slots):
         if i >= len(picks):
@@ -782,14 +824,18 @@ def _anim_timeline(emos, subset, loop, merge=45):
 
 
 def _render_timeline(key, P, style, emos, picks, opts, subset, times):
-    global ANIM_T, ANIM_SET
+    global ANIM_T, ANIM_SET, _SPRITE_CACHE
     ANIM_SET = {id(emos[i]) for i in subset}
+    _SPRITE_CACHE = {}   # 배경·정지 카드·그림자를 프레임 간 재사용
     frames = []
-    for t in times:
-        ANIM_T = t
-        frames.append(render_stage(key, P, style, emos, picks, opts).convert("RGB"))
-    ANIM_T = None
-    ANIM_SET = None
+    try:
+        for t in times:
+            ANIM_T = t
+            frames.append(render_stage(key, P, style, emos, picks, opts).convert("RGB"))
+    finally:
+        ANIM_T = None
+        ANIM_SET = None
+        _SPRITE_CACHE = None
     return frames
 
 
@@ -818,12 +864,17 @@ def export_animated(key, base, P, style, emos, picks, opts, used):
         times = list(range(0, max(loop, TICK), TICK))
         durations = [TICK] * len(times)
         frames = _render_timeline(key, P, style, emos, picks, opts, plan["subset"], times)
-        for colors in plan["colors"]:
-            data, n = _encode_apng(frames, durations, colors, 1)
+        cols, ci = plan["colors"], 0
+        while ci < len(cols):
+            data, n = _encode_apng(frames, durations, cols[ci], 1)
             if len(data) <= 500 * 1024:
                 return dict(name=f"{base}.png", data=data, w=S["w"], h=S["h"],
-                            anim=dict(sec=round(loop / 1000, 1), colors=colors, frames=n),
+                            anim=dict(sec=round(loop / 1000, 1), colors=cols[ci], frames=n),
                             note=plan["label"])
+            # 색 한 단계는 최대 ~25% 감소 → 그걸로도 못 들어갈 단계는 건너뜀 (마지막 단계는 항상 시도)
+            ratio = len(data) / (500 * 1024)
+            skip = int(math.log(ratio) / math.log(1 / 0.7))
+            ci = min(ci + 1 + max(0, skip), len(cols) - 1) if ci < len(cols) - 1 else len(cols)
     # 전부 넘치면 정지 이미지로
     img = render_stage(key, P, style, emos, picks, opts)
     return dict(export(img, base), note="용량 제한 때문에 정지 이미지로 저장")
