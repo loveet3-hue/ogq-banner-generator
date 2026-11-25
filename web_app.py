@@ -44,6 +44,14 @@ tab_banner, tab_card, tab_playbook = st.tabs(
 # =========================================================================
 import banner_studio as bst  # noqa: E402
 
+# 배포 직후 서버가 web_app 만 새로 읽고 bst 는 이전 버전을 들고 있는 경우가 있어,
+# 파일이 바뀌었으면 강제로 다시 읽는다 (팀원이 AttributeError 화면을 보는 사고 방지)
+import importlib  # noqa: E402
+_bst_mtime = os.path.getmtime(bst.__file__)
+if getattr(bst, "_loaded_mtime", None) != _bst_mtime:
+    bst = importlib.reload(bst)
+    bst._loaded_mtime = _bst_mtime
+
 with tab_banner:
     st.caption("OGQ 제출용 zip(1~24.png/gif · main · tab)을 올리면 지면별 규격에 맞춘 출시 배너를 "
                "시안 3개로 만들어 드립니다.")
