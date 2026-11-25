@@ -89,11 +89,22 @@ with tab_banner:
                     creator_in = st.text_input("크리에이터명 (인스타)", placeholder="예) 아지그림")
                 footer_in = st.text_input("인스타 하단 문구", value="OGQ마켓 *출시!*")
 
+            with st.expander("📢 SOOP 홍보 팝업 문구 (*별표*는 강조색)"):
+                pc1, pc2 = st.columns(2)
+                with pc1:
+                    pop_tag_in = st.text_input("맨 위 라벨 (비우면 라벨 없이)", value="",
+                                               placeholder="예) NEW 이모티콘", key="popTag")
+                    pop_title_in = st.text_input("제목", value="", placeholder="비우면 이모티콘 이름",
+                                                 key="popTitle")
+                with pc2:
+                    pop_sub_in = st.text_input("부제", value="SOOP OGQ이모티콘 *출시!!*", key="popSub")
+                    cta_in = st.text_input("버튼", value="이모티콘 보러가기", key="popCta")
+
             if n_gif:
                 ac1, ac2 = st.columns(2)
                 with ac1:
                     anim_on = st.checkbox("GIF 이모티콘은 움직이는 PNG(APNG)로", value=True,
-                                          help=f"움직이는 GIF {n_gif}개를 찾았어요. SOM·NOM·COM에 적용되고, "
+                                          help=f"움직이는 GIF {n_gif}개를 찾았어요. SOM·팝업·NOM·COM에 적용되고, "
                                                "용량이 넘치면 움직이는 이모티콘 수를 줄여 500KB를 맞춰요.")
                 with ac2:
                     vid_on = st.checkbox("카드뉴스 움직이는 GIF도 만들기", value=True,
@@ -104,15 +115,20 @@ with tab_banner:
                 vid_on = False
                 st.caption("이 zip에는 움직이는 GIF가 없어서 일반 PNG로 만들어요.")
 
-            with st.expander("✥ 문구 위치 · 크기 조절 (COM · 인스타)"):
+            with st.expander("✥ 문구 위치 · 크기 조절 (COM · 홍보 팝업 · 인스타)"):
                 st.caption("기본값(0, 100%)이면 자동 배치입니다. 문구를 옮기거나 키우고 싶을 때만 조절하세요.")
-                tcol1, tcol2, tcol3 = st.columns(3)
+                tcol1, tcolP, tcol2, tcol3 = st.columns(4)
                 text_opts = {}
                 with tcol1:
                     st.markdown("**COM 문구**")
                     text_opts["cX"] = st.slider("좌우 이동", -300, 300, 0, 10, key="txcX")
                     text_opts["cY"] = st.slider("위아래 이동", -300, 300, 0, 10, key="txcY")
                     text_opts["cS"] = st.slider("크기 %", 60, 130, 100, 2, key="txcS")
+                with tcolP:
+                    st.markdown("**홍보 팝업**")
+                    text_opts["pX"] = st.slider("좌우 이동", -200, 200, 0, 10, key="txpX")
+                    text_opts["pY"] = st.slider("위아래 이동", -40, 200, 0, 5, key="txpY")
+                    text_opts["pS"] = st.slider("크기 %", 60, 130, 100, 2, key="txpS")
                 with tcol2:
                     st.markdown("**인스타 제목**")
                     text_opts["itX"] = st.slider("좌우 이동", -300, 300, 0, 10, key="txitX")
@@ -125,10 +141,12 @@ with tab_banner:
                     text_opts["ifS"] = st.slider("크기 %", 60, 130, 100, 2, key="txifS")
 
             st.markdown("**만들 지면**")
-            t1, t2, t3, t4 = st.columns(4)
+            t1, tp, t2, t3, t4 = st.columns(5)
             targets = []
             if t1.checkbox("SOM · SOOP 메인", value=True, help="PC 1344×260 / MO 672×440"):
                 targets.append("som")
+            if tp.checkbox("SOM · SOOP 홍보 팝업", value=True, help="600×772, PC·MO 공용, 문구 포함"):
+                targets.append("pop")
             if t2.checkbox("NOM · 네이버", value=True, help="PC 824×464 / MO 640×360"):
                 targets.append("nom")
             if t3.checkbox("COM · 채팅플러스", value=True, help="984×552, 문구 포함"):
@@ -146,6 +164,9 @@ with tab_banner:
                     style = st.selectbox("디자인", list(bst.STYLES), key=f"sv{k}_style",
                                          index=list(bst.STYLES).index(bst.DEFAULT_STYLES[k]),
                                          format_func=lambda v: bst.STYLES[v])
+                    popbg = st.selectbox("홍보 팝업 배경", list(bst.POP_BG), key=f"sv{k}_popbg",
+                                         index=list(bst.POP_BG).index(bst.DEFAULT_POPBG[k % len(bst.DEFAULT_POPBG)]),
+                                         format_func=lambda v: bst.POP_BG[v])
                     color = st.selectbox("배경색", ["auto"] + list(bst.PALETTES) + ["custom"], key=f"sv{k}_color",
                                          format_func=lambda v: {"auto": "자동", "custom": "직접 고르기"}.get(v, bst.PALETTES.get(v, {}).get("label", v)))
                     hexv = "#CFE5F8"
@@ -155,7 +176,7 @@ with tab_banner:
                                          placeholder="비우면 자동  예) 1, 9, 13")
                     icons = st.text_input("COM 문구 양옆 아이콘 2개", key=f"sv{k}_icons",
                                           placeholder="비우면 자동  예) 2, 22")
-                    variants.append(dict(on=on, style=style, color=color, hex=hexv.upper(),
+                    variants.append(dict(on=on, style=style, popBg=popbg, color=color, hex=hexv.upper(),
                                          pick=parse_nums(pick), icons=parse_nums(icons)))
 
             go_banner = st.button("✨ 배너 만들기", type="primary", use_container_width=True,
@@ -166,6 +187,8 @@ with tab_banner:
                 name=(name_in.strip() or default_name),
                 chat=(chat_in.strip() or f"{name_in.strip() or default_name} 이모티콘 *출시*"),
                 tagline=tag_in.strip(), creator=creator_in.strip(), footer=footer_in.strip(),
+                popTag=pop_tag_in.strip(), popTitle=pop_title_in.strip(),
+                popSub=pop_sub_in.strip(), cta=cta_in.strip(),
                 text=text_opts)
             prog = st.progress(0, text="배너 그리는 중...")
 

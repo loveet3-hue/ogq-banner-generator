@@ -49,9 +49,15 @@ L = {
     "chat": dict(w=984, h=552, mask=[("v", [(0, 1), (248, 1), (430, 0)])], glow=[(230, -170, 540)],
         slots=[(70, 110, 210, -10), (372, 46, 240, 4), (700, 104, 210, 9)],
         deco=[("spark", 330, 40, 40), ("spark2", 640, 300, 30), ("heart", 880, 50, 34), ("squig", 70, 46, 70), ("bubble", 268, 296, 26)]),
+    # SOOP 홍보 팝업 (가이드 18~19p): 600×772, PC·MO 같은 파일, 문구 이미지 안에 포함, 흰 배경·테두리·라운딩 금지
+    "popup": dict(w=600, h=772, mask=[("v", [(0, 1), (300, .35), (640, 1)])], glow=[(-40, 200, 680)],
+        slots=[(40, 392, 180, -10), (188, 304, 224, 4), (384, 400, 176, 9)],
+        slotsHalo=[(40, 410, 176, 0), (194, 330, 212, 0), (386, 414, 176, 0)],
+        deco=[("spark", 52, 300, 38), ("spark2", 530, 312, 26), ("heart", 524, 40, 30), ("squig", 34, 40, 64), ("bubble", 480, 560, 26), ("bubble", 70, 600, 20)]),
 }
 TARGETS = {
     "som": [("soop_pc", "SOM_soop_main_pc_1344x260"), ("soop_mo", "SOM_soop_main_mo_672x440")],
+    "pop": [("popup", "SOM_soop_popup_600x772")],
     "nom": [("naver_pc", "NOM_naver_pc_824x464"), ("naver_mo", "NOM_naver_mo_640x360")],
     "com": [("chat", "COM_chattingplus_984x552")],
     "insta": [("insta", "INSTA_card_1080x1350")],
@@ -250,6 +256,8 @@ def auto_palette(h, s):
 
 
 def custom_palette(hexcol):
+    if re.fullmatch(r"#?[Ff]{6}", hexcol or ""):   # SOOP 가이드: 배경 #FFFFFF 금지
+        hexcol = "#F7F5F0"
     r, g, b = hex_rgb(hexcol)
     h, l, s = _rgb2hls(r, g, b)
     import colorsys
@@ -654,7 +662,294 @@ def draw_pill(img, text, cx, top, fs, pad_y, pad_x, bg, fg, P, pipe_color=None):
         x += f.getlength(ch) + 1
 
 
-TEXT_DEFAULT = dict(cX=0, cY=0, cS=100, itX=0, itY=0, itS=100, ifX=0, ifY=0, ifS=100)
+# ---------------------------------------------------------------- SOOP 홍보 팝업 (HTML drawPopupBg/drawPopupText 동일)
+POP_BG = {"basic": "기본 (그리드·도트)", "sunburst": "햇살 + 컨페티", "sky": "구름 하늘",
+          "stage": "무대 스포트라이트", "gingham": "피크닉 체크"}
+DEFAULT_POPBG = ["basic", "sunburst", "sky"]
+
+
+def _hls_hex(h, l, s):
+    import colorsys
+    r, g, b = colorsys.hls_to_rgb(h % 1, max(0, min(1, l)), max(0, min(1, s)))
+    return "#%02X%02X%02X" % (round(r * 255), round(g * 255), round(b * 255))
+
+
+def shade(hexcol, l, s_add=0, s_max=1):
+    r, g, b = hex_rgb(hexcol)
+    h, _, s = _rgb2hls(r, g, b)
+    return _hls_hex(h, l, min(s_max, s + s_add))
+
+
+def seeded(n):
+    """장면마다 같은 위치 (움직이는 PNG에서 깜빡이지 않게) — HTML seeded 동일"""
+    state = [n]
+    def rnd():
+        state[0] = (state[0] * 16807) % 2147483647
+        return state[0] / 2147483647
+    return rnd
+
+
+def _vgrad(w, h, stops):
+    """세로 그라데이션 RGBA 이미지. stops: [(t0~1, (r,g,b,a)), ...]"""
+    col = Image.new("RGBA", (1, h))
+    px = col.load()
+    stops = sorted(stops)
+    for y in range(h):
+        t = y / max(1, h - 1)
+        c = stops[0][1] if t <= stops[0][0] else stops[-1][1]
+        for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
+            if t0 <= t <= t1:
+                k = 0 if t1 == t0 else (t - t0) / (t1 - t0)
+                c = tuple(round(a + (b - a) * k) for a, b in zip(c0, c1))
+                break
+        px[0, y] = c
+    return col.resize((w, h))
+
+
+def _radial(img, cx, cy, r, stops, color=(255, 255, 255), ry=None):
+    """방사형 그라데이션(알파만 보간)을 img 에 합성. stops: [(t, alpha0~1), ...]"""
+    ry = ry or r
+    size = 400
+    m = Image.new("L", (size, size), 0)
+    dm = ImageDraw.Draw(m)
+    stops = sorted(stops)
+    for i in range(size // 2, 0, -1):
+        t = i / (size / 2)
+        a = stops[0][1] if t <= stops[0][0] else stops[-1][1]
+        for (t0, a0), (t1, a1) in zip(stops, stops[1:]):
+            if t0 <= t <= t1:
+                a = a0 if t1 == t0 else a0 + (a1 - a0) * (t - t0) / (t1 - t0)
+                break
+        c = size / 2
+        dm.ellipse([c - i, c - i, c + i, c + i], fill=int(a * 255))
+    m = m.resize((int(r * 2), int(ry * 2)))
+    ov = Image.new("RGBA", m.size, tuple(color) + (0,))
+    ov.putalpha(m)
+    img.alpha_composite(ov, (int(cx - r), int(cy - ry)))
+
+
+def _confetti(img, W, H, P, avoid, count):
+    rnd = seeded(7)
+    cols = [P["accent"], "#FFE07A", "#FFFFFF", shade(P["bg"], .62, .2)]
+    stroke = tuple(P["sh"]) + (89,)
+    n = tries = 0
+    while n < count and tries < 600:
+        tries += 1
+        X, Y = rnd() * W, rnd() * H
+        if any(ax < X < ax + aw and ay < Y < ay + ah for ax, ay, aw, ah in avoid):
+            continue
+        c = hex_rgb(cols[int(rnd() * len(cols)) % len(cols)]) + (255,)
+        s = 8 + rnd() * 10
+        rot = rnd() * 180
+        shape_circle = rnd() >= .5
+        Ssp = int(s * 2 * SS)
+        sp = Image.new("RGBA", (Ssp, Ssp), (0, 0, 0, 0))
+        d = ImageDraw.Draw(sp)
+        cxy = Ssp / 2
+        if shape_circle:
+            r = s / 3 * SS
+            d.ellipse([cxy - r, cxy - r, cxy + r, cxy + r], fill=c, outline=stroke, width=max(1, int(1.5 * SS)))
+        else:
+            w2, h2 = s * SS, s / 2 * SS
+            rrect(d, [cxy - w2 / 2, cxy - h2 / 2, cxy + w2 / 2, cxy + h2 / 2], s / 5 * SS,
+                  fill=c, outline=stroke, width=max(1, int(1.5 * SS)))
+        sp = sp.rotate(-rot, resample=Image.BICUBIC, expand=False)
+        sp = sp.resize((int(s * 2), int(s * 2)), Image.LANCZOS)
+        img.alpha_composite(sp, (int(X - s), int(Y - s)))
+        n += 1
+
+
+def _cloud_shape(w, parts=None):
+    """구름 모양 L 마스크 (중심 기준 비율 좌표 원들)"""
+    parts = parts or [(-.32, .1, .24), (-.1, -.12, .3), (.18, -.04, .26), (.36, .12, .18), (0, .14, .3)]
+    pad = int(w * 0.6)
+    m = Image.new("L", (int(w * 2), int(w * 1.2) + pad), 0)
+    d = ImageDraw.Draw(m)
+    cx, cy = w, w * 0.35
+    for dx, dy, r in parts:
+        X, Y, R = cx + dx * w, cy + dy * w, r * w
+        d.ellipse([X - R, Y - R, X + R, Y + R], fill=255)
+    return m, (cx, cy)
+
+
+def _cloud(img, cx, cy, w, fill):
+    m, (ox, oy) = _cloud_shape(w)
+    ov = Image.new("RGBA", m.size, fill[:3] + (0,))
+    ov.putalpha(m.point(lambda v: int(v * fill[3] / 255)))
+    img.alpha_composite(ov, (int(cx - ox), int(cy - oy)))
+
+
+def _qbez(p0, c, p1, steps=12):
+    return [((1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * c[0] + t ** 2 * p1[0],
+             (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * c[1] + t ** 2 * p1[1])
+            for t in (i / steps for i in range(steps + 1))]
+
+
+def draw_popup_bg(img, S, P, kind):
+    W, H = S["w"], S["h"]
+    TEXT, CARDS, BTN = (30, 24, 540, 270), (30, 300, 540, 300), (110, 640, 380, 100)
+    if kind == "sunburst":
+        cx, cy, n = W / 2, 455, 32
+        ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(ov)
+        R = 1300
+        for i in range(0, n, 2):
+            a0, a1 = 360 * i / n, 360 * (i + 1) / n
+            d.pieslice([cx - R, cy - R, cx + R, cy + R], a0, a1, fill=(255, 255, 255, 87))
+        img.alpha_composite(ov)
+        _radial(img, cx, cy, 360, [(0, .9), (.55, .35), (1, 0)])
+        _confetti(img, W, H, P, [TEXT, CARDS, BTN], 30)
+    elif kind == "sky":
+        c0, c1, c2 = hex_rgb(shade(P["bg"], .94)), hex_rgb(P["bg"]), hex_rgb(shade(P["bg"], .78, .1))
+        img.alpha_composite(_vgrad(W, H, [(0, c0 + (255,)), (.5, c1 + (255,)), (1, c2 + (255,))]))
+        draw_glow(img, 330, -160, 460)
+        _cloud(img, 70, 330, 120, (255, 255, 255, 217))
+        _cloud(img, 540, 285, 140, (255, 255, 255, 204))
+        _cloud(img, 520, 52, 90, (255, 255, 255, 179))
+        # 아래 큰 구름 바닥 (캐릭터가 구름 위에 올라앉은 느낌)
+        base = 600
+        m = Image.new("L", (W, H), 0)
+        dm = ImageDraw.Draw(m)
+        for ccx, dy, r in [(0, 40, 90), (110, 10, 85), (230, 0, 95), (360, 8, 90), (480, 18, 95), (600, 40, 90)]:
+            dm.ellipse([ccx - r, base + dy - r, ccx + r, base + dy + r], fill=255)
+        dm.rectangle([0, base + 40, W, H], fill=255)
+        sh = Image.new("RGBA", (W, H), tuple(P["sh"]) + (0,))
+        sh.putalpha(m.point(lambda v: int(v * 0.18)).filter(ImageFilter.GaussianBlur(9)))
+        img.alpha_composite(sh, (0, -6))
+        fl = Image.new("RGBA", (W, H), (255, 253, 248, 0))
+        fl.putalpha(m)
+        img.alpha_composite(fl)
+        draw_deco(img, "spark", 40, 170, 34, P)
+        draw_deco(img, "spark2", 548, 200, 24, P)
+        draw_deco(img, "spark2", 24, 420, 22, P)
+    elif kind == "stage":
+        # 피로감 없도록 채도를 눌러서 (가이드: 자극적인 컬러 금지)
+        back = shade(P["accent"], .3, 0, .35)
+        curtain = shade(P["accent"], .52, 0, .55)
+        fold = shade(P["accent"], .42, 0, .5)
+        floor = shade(P["accent"], .24, 0, .3)
+        ImageDraw.Draw(img).rectangle([0, 0, W, H], fill=hex_rgb(back) + (255,))
+        # 스포트라이트 (사다리꼴 × 세로 그라데이션)
+        sg = _vgrad(W, 640, [(0, (255, 250, 225, 140)), (1, (255, 250, 225, 46))])
+        pm = Image.new("L", (W, 640), 0)
+        ImageDraw.Draw(pm).polygon([(220, 0), (380, 0), (590, 640), (10, 640)], fill=255)
+        sg.putalpha(Image.composite(sg.split()[3], Image.new("L", (W, 640), 0), pm))
+        img.alpha_composite(sg)
+        # 무대 바닥
+        ImageDraw.Draw(img).rectangle([0, 610, W, H], fill=hex_rgb(floor) + (255,))
+        _radial(img, W / 2, 612, 300, [(0, .6), (1, 0)], (255, 250, 225), ry=70)
+        # 양옆 커튼 + 접힘 선
+        for side in (0, 1):
+            ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            d = ImageDraw.Draw(ov)
+            pts = [(0, 0), (96, 0)] + bezier((96, 0), (70, 220), (30, 420), (64, 640)) + [(64, 640), (0, 640)]
+            d.polygon(pts, fill=hex_rgb(curtain) + (255,))
+            for fx in (22, 48):
+                d.line(bezier((fx, 0), (fx - 6, 220), (fx - 20, 420), (fx - 4, 630)),
+                       fill=hex_rgb(fold) + (255,), width=6, joint="curve")
+            if side:
+                ov = ov.transpose(Image.FLIP_LEFT_RIGHT)
+            img.alpha_composite(ov)
+        # 위 장식 (스캘럽)
+        ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        pts = [(0, 0), (W, 0), (W, 26)]
+        i = W
+        while i > 0:
+            pts += _qbez((i, 26), (i - 25, 52), (i - 50, 26))
+            i -= 50
+        ImageDraw.Draw(ov).polygon(pts, fill=hex_rgb(curtain) + (255,))
+        img.alpha_composite(ov)
+        # 무대 조명 점
+        d = ImageDraw.Draw(img)
+        for i in range(9):
+            lx = 40 + i * 65
+            d.ellipse([lx - 6, 750, lx + 6, 762], fill=(255, 224, 122, 255))
+    elif kind == "gingham":
+        ImageDraw.Draw(img).rectangle([0, 0, W, H], fill=hex_rgb(shade(P["bg"], .93)) + (255,))
+        band = hex_rgb(P["accent"]) + (41,)
+        ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(ov)
+        for i in range(-18, W, 72):
+            d.rectangle([i, 0, i + 36, H], fill=band)
+        img.alpha_composite(ov)
+        ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(ov)
+        for j in range(-18, H, 72):
+            d.rectangle([0, j, W, j + 36], fill=band)
+        img.alpha_composite(ov)
+        _radial(img, W / 2, 300, 420, [(0.095, .85), (1, 0)], (255, 253, 248))
+        draw_deco(img, "heart", 30, 40, 32, P)
+        draw_deco(img, "heart", 538, 300, 28, P)
+        draw_deco(img, "spark", 40, 560, 34, P)
+        draw_deco(img, "spark2", 530, 48, 24, P)
+
+
+def _split_two(text, fs, fs2_base, maxw, ls_pct):
+    """한 줄 fs 가 너무 작으면 공백 기준 두 줄 분할 시도 (*강조* 안은 자르지 않음)"""
+    raw = unicodedata.normalize("NFC", text or "")
+    spots, in_star = [], False
+    for i, ch in enumerate(raw):
+        if ch == "*":
+            in_star = not in_star
+        elif ch == " " and not in_star:
+            spots.append(i)
+    if not spots:
+        return [text], fs
+    mid = len(raw) / 2
+    cut = min(spots, key=lambda b: abs(b - mid))
+    two = [raw[:cut], raw[cut + 1:]]
+    fs2 = min(fit_size(segments(t), fs2_base, maxw, ls_pct) for t in two)
+    if fs2 > fs * 1.15:
+        return two, fs2
+    return [text], fs
+
+
+def draw_popup_text(img, S, P, opts):
+    """홍보 팝업: 위 라벨 · 제목(1~2줄) · 부제 + 아래 버튼"""
+    T = _text(opts)
+    dx, dy, sc = T["pX"], T["pY"], T["pS"] / 100
+    cx = S["w"] / 2 + dx
+    maxw = 520 + max(0, sc - 1) * 120
+    y = 44 + dy
+    if opts.get("popTag"):
+        pfs = round(24 * max(.8, sc))
+        draw_pill(img, opts["popTag"], cx, y, pfs, 6, 20, P["accent"], (255, 255, 255), P)
+        y += pfs * 1.2 + 12 + 18
+    title = opts.get("popTitle") or opts["name"]
+    fs = fit_size(segments(title), round(84 * sc), maxw, 2)
+    lines = [title]
+    if fs < 64 * sc:
+        lines, fs = _split_two(title, fs, round(76 * sc), maxw, 2)
+    lh = fs * 1.1
+    for i, ln in enumerate(lines):
+        draw_rich(img, segments(ln), cx, y + fs * 0.5 + i * lh, fs, max(10, 14 * fs / 84), P, fs * 0.02)
+    y += lh * (len(lines) - 1) + fs + 14
+    if opts.get("popSub"):
+        ss = segments(opts["popSub"])
+        sfs = fit_size(ss, round(38 * sc), maxw, 2)
+        draw_rich(img, ss, cx, y + sfs * 0.5, sfs, 8, P, sfs * 0.02)
+    # 버튼 (팝업 아래 '하루 동안 보지 않기 · 닫기'는 SOOP 이 붙여 주므로 그리지 않음)
+    if opts.get("cta"):
+        label = unicodedata.normalize("NFC", opts["cta"])
+        f = _font(30)
+        arrow_w = 26
+        tw = f.getlength(label) + arrow_w
+        bw = min(S["w"] - 80, max(300, tw + 80))
+        bh = 66
+        bx, by = (S["w"] - bw) / 2, S["h"] - 52 - bh
+        btn = Image.new("RGBA", (int(bw) + 8, bh + 8), (0, 0, 0, 0))
+        rrect(ImageDraw.Draw(btn), [0, 0, int(bw) - 1, bh - 1], bh / 2, fill=hex_rgb(P["accent"]) + (255,))
+        paste_sprite(img, btn, bx, by, P["sh"], 0.35, 4, 6)
+        d = ImageDraw.Draw(img)
+        asc, desc = f.getmetrics()
+        tx = S["w"] / 2 - tw / 2
+        d.text((tx, by + bh / 2 + 1 - (asc + desc) / 2), label, font=f, fill=(255, 255, 255))
+        ax = tx + tw - arrow_w + 10   # ▸ (Jua 에 글리프가 없어 직접 그림)
+        ay = by + bh / 2 + 1
+        d.polygon([(ax, ay - 9), (ax + 12, ay), (ax, ay + 9)], fill=(255, 255, 255))
+
+
+TEXT_DEFAULT = dict(cX=0, cY=0, cS=100, pX=0, pY=0, pS=100, itX=0, itY=0, itS=100, ifX=0, ifY=0, ifS=100)
 
 
 def _text(opts):
@@ -664,18 +959,21 @@ def _text(opts):
 
 
 # ---------------------------------------------------------------- 지면 그리기
-def _stage_base(key, P, style):
+def _stage_base(key, P, style, popbg=None):
     """프레임 간 동일한 배경(바탕색+패턴+글로우+장식) — 시퀀스 렌더 중에는 캐시"""
-    bkey = ("base", key, style, id(P))
+    bkey = ("base", key, style, id(P), popbg)
     if _SPRITE_CACHE is not None and bkey in _SPRITE_CACHE:
         return _SPRITE_CACHE[bkey].copy()
     S = L[key]
     img = Image.new("RGBA", (S["w"], S["h"]), hex_rgb(P["bg"]) + (255,))
-    draw_pattern(img, style, S.get("mask"))
-    for g in S["glow"]:
-        draw_glow(img, *g)
-    for dk in S["deco"]:
-        draw_deco(img, dk[0], dk[1], dk[2], dk[3], P)
+    if key == "popup" and popbg and popbg != "basic":
+        draw_popup_bg(img, S, P, popbg)
+    else:
+        draw_pattern(img, style, S.get("mask"))
+        for g in S["glow"]:
+            draw_glow(img, *g)
+        for dk in S["deco"]:
+            draw_deco(img, dk[0], dk[1], dk[2], dk[3], P)
     if _SPRITE_CACHE is not None:
         _SPRITE_CACHE[bkey] = img.copy()
     return img
@@ -684,7 +982,7 @@ def _stage_base(key, P, style):
 def render_stage(key, P, style, emos, picks, opts):
     S = L[key]
     w, h = S["w"], S["h"]
-    img = _stage_base(key, P, style)
+    img = _stage_base(key, P, style, opts.get("popBg"))
     slots = S.get("slotsHalo", S["slots"]) if style == "halo" else S["slots"]
     for i, (X, Y, s, r) in enumerate(slots):
         if i >= len(picks):
@@ -721,6 +1019,8 @@ def render_stage(key, P, style, emos, picks, opts):
         left += tw + gap
         if len(ic) > 1:
             draw_char(img, ic[1], left + icw[1] / 2, cy + ic_h / 2, icw[1], ic_h, 0, P, 2)
+    if key == "popup":
+        draw_popup_text(img, S, P, opts)
     return img
 
 
@@ -739,16 +1039,24 @@ def render_insta(P, style, emos, picks, opts):
         draw_char(img, emos[picks[2]], 950, head, 260, 240, 4, P)
     # 머리 영역 밖으로 번진 캐릭터는 그대로 (JS 도 clip 안에서 그려 살짝 잘림) → head 아래 잘라줌
     T = _text(opts)
-    segs = segments(opts["name"])
-    fs = fit_size(segs, round(128 * T["itS"] / 100), 560 + max(0, T["itS"] - 100) * 3, 3)
+    k = T["itS"] / 100
+    maxw = 600 + max(0, T["itS"] - 100) * 3
+    # 한 줄로 넣었을 때 글씨가 너무 작아지면 두 줄로 나눔 (공백 기준, *강조* 안은 자르지 않음)
+    fs = fit_size(segments(opts["name"]), round(128 * k), maxw, 3)
+    lines = [opts["name"]]
+    if fs < 92 * k:
+        lines, fs = _split_two(opts["name"], fs, round(112 * k), maxw, 3)
+    lh = fs * 1.08
+    text_h = lh * len(lines) - (lh - fs)
     pill_h = (28 * 1.2 + 20) if opts.get("creator") else 0
-    gap_p = 22 if opts.get("creator") else 0
-    block_h = fs * 1.0 + gap_p + pill_h
-    top = (head - block_h) / 2 - 6 + T["itY"]
+    gap_p = 18 if opts.get("creator") else 0
+    block_h = text_h + gap_p + pill_h
+    top = (head - block_h) / 2 - 4 + T["itY"]
     tcx = W / 2 + T["itX"]
-    draw_rich(img, segs, tcx, top + fs * 0.5, fs, max(10, 16 * fs / 128), P, fs * 0.03)
+    for i, ln in enumerate(lines):
+        draw_rich(img, segments(ln), tcx, top + fs * 0.5 + i * lh, fs, max(10, 16 * fs / 128), P, fs * 0.03)
     if opts.get("creator"):
-        draw_pill(img, f"크리에이터 | {opts['creator']}", tcx, top + fs + gap_p, 28, 10, 28,
+        draw_pill(img, f"크리에이터 | {opts['creator']}", tcx, top + text_h + gap_p, 28, 10, 28,
                   P["ink"], (255, 255, 255), P, P["bg"])
     # 그리드
     n = len(emos)
@@ -853,7 +1161,7 @@ def export_animated(key, base, P, style, emos, picks, opts, used):
     plans = [
         dict(subset=used, cap=MAX_LOOP, label="", colors=(256, 160, 112, 96, 72, 56, 48)),
         dict(subset=used, cap=1000, label="1초 반복", colors=(160, 112, 96, 72, 56, 48)),
-        dict(subset=main, cap=1000, label="배너 이모티콘만 움직임",
+        dict(subset=main, cap=1000, label="배너 이모티콘만 움직임 · 1초 반복",
              colors=(112, 96, 72, 56, 48, 40, 32)),
         dict(subset=hero, cap=MAX_LOOP, label="가운데 이모티콘만 움직임", colors=(160, 112, 96, 72)),
     ]
@@ -945,7 +1253,7 @@ def generate(emos, opts, variants, targets, progress=lambda *a: None, anim=True,
         if pname == "auto":
             pname = base_pal if k == 0 else [c for c in ALT_ORDER if c != base_pal][(k - 1) % 6]
         P = custom_palette(v["hex"]) if pname == "custom" else PALETTES[pname]
-        o = dict(opts, icons=icons)
+        o = dict(opts, icons=icons, popBg=v.get("popBg") or DEFAULT_POPBG[k % len(DEFAULT_POPBG)])
         files = []
         for t in targets:
             for key, fname in TARGETS[t]:
